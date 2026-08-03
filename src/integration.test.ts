@@ -1,62 +1,83 @@
 /**
- * 통합 테스트: 표 붙여넣기 → 로스터 구성 → 로토서리 순위표.
+ * 통합 테스트: 여러 표 붙여넣기 → 로스터 구성 → 로토서리 순위표.
  *
- * 화면 없이 실제 파이프라인을 그대로 통과시켜, 임포트 결과가
- * 순위 계산에 올바르게 연결되는지 확인한다.
+ * 화면 없이 실제 파이프라인을 그대로 통과시켜, 항목이 여러 페이지에 나뉘어 있어도
+ * 순위 계산까지 올바르게 연결되는지 확인한다.
  */
 
 import { describe, expect, it } from 'vitest';
 import { computeStandings } from './domain/rotisserie';
 import { emptySnapshot } from './domain/types';
 import type { LeagueSnapshot, PlayerRole } from './domain/types';
-import { parseStatTable, playerKey } from './import/parseStatTable';
+import { applyImport } from './import/applyImport';
+import { parseStatTable } from './import/parseStatTable';
 
-const HITTERS = [
-  '순위\t선수명\t팀명\tAVG\tG\tPA\tAB\tR\tH\t2B\t3B\tHR\tTB\tRBI\tSB',
-  '1\t김도영\tKIA\t0.347\t141\t625\t544\t143\t189\t29\t10\t38\t363\t109\t40',
-  '2\t레이예스\t롯데\t0.352\t144\t622\t574\t89\t202\t34\t2\t15\t285\t111\t3',
-  '3\t구자욱\t삼성\t0.343\t129\t558\t484\t92\t166\t39\t1\t33\t306\t115\t13',
-  '4\t오스틴\tLG\t0.319\t140\t612\t546\t99\t174\t31\t0\t32\t301\t132\t15',
+const NOW = '2026-08-01T00:00:00.000Z';
+
+const HITTER_BASIC1 = [
+  '순위\t선수명\t팀명\tG\tAB\tR\tH\tHR\tRBI\tSB',
+  '1\t김도영\tKIA\t141\t544\t143\t189\t38\t109\t40',
+  '2\t구자욱\t삼성\t129\t484\t92\t166\t33\t115\t13',
+  '3\t레이예스\t롯데\t144\t574\t89\t202\t15\t111\t3',
+  '4\t오스틴\tLG\t140\t546\t99\t174\t32\t132\t15',
+].join('\n');
+
+const HITTER_BASIC2 = [
+  '순위\t선수명\t팀명\tBB\tIBB\tSO\tGDP',
+  '1\t김도영\tKIA\t66\t2\t97\t7',
+  '2\t구자욱\t삼성\t58\t3\t70\t11',
+  '3\t레이예스\t롯데\t39\t1\t76\t18',
+  '4\t오스틴\tLG\t53\t4\t102\t14',
 ].join('\n');
 
 const PITCHERS = [
-  '순위\t선수명\t팀명\tERA\tG\tW\tL\tSV\tHLD\tWPCT\tIP\tH\tHR\tBB\tHBP\tSO\tR\tER\tWHIP',
-  '1\t원태인\t삼성\t3.66\t28\t15\t6\t0\t0\t0.714\t159 2/3\t160\t13\t43\t5\t119\t72\t65\t1.27',
-  '2\t네일\tKIA\t2.53\t26\t12\t5\t0\t0\t0.706\t149 1/3\t128\t7\t35\t9\t122\t46\t42\t1.09',
+  '순위\t선수명\t팀명\tG\tW\tL\tSV\tHLD\tIP\tH\tBB\tSO',
+  '1\t원태인\t삼성\t28\t15\t6\t0\t0\t159 2/3\t160\t43\t119',
+  '2\t네일\tKIA\t26\t12\t5\t0\t0\t149 1/3\t128\t35\t122',
 ].join('\n');
 
-/** ImportPanel 의 반영 로직과 같은 동작 */
-function applyImport(snapshot: LeagueSnapshot, text: string, role: PlayerRole): LeagueSnapshot {
+function importTable(snapshot: LeagueSnapshot, text: string, role: PlayerRole): LeagueSnapshot {
   const result = parseStatTable(text, role);
-  expect(result.missingFields).toEqual([]);
-
-  const next = structuredClone(snapshot);
-  for (const row of result.rows) {
-    const id = playerKey(row.name);
-    next.players[id] = {
-      id,
-      name: row.name,
-      kboTeam: row.kboTeam ?? '',
-      role,
-    };
-    if (row.hitting) next.hitting[id] = row.hitting;
-    if (row.pitching) next.pitching[id] = row.pitching;
-  }
-  next.statsUpdatedAt = '2026-08-01T00:00:00.000Z';
-  return next;
+  expect(result.fatal).toBeNull();
+  return applyImport(snapshot, result, { now: NOW });
 }
 
-describe('임포트 → 순위표 통합', () => {
+describe('부분 임포트 → 순위표 통합', () => {
+  it('두 페이지를 이어 넣으면 타자 8부문이 모두 채워진다', () => {
+    let snapshot = emptySnapshot(2026);
+
+    snapshot = importTable(snapshot, HITTER_BASIC1, 'hitter');
+    expect(snapshot.importedFields.hitting.sort()).toEqual(['h', 'hr', 'r', 'rbi', 'sb'].sort());
+    // 아직 BB·SO·GDP는 0
+    expect(snapshot.hitting['김도영'].bb).toBe(0);
+    expect(snapshot.hitting['김도영'].hr).toBe(38);
+
+    snapshot = importTable(snapshot, HITTER_BASIC2, 'hitter');
+    expect(snapshot.importedFields.hitting.sort()).toEqual(
+      ['bb', 'gdp', 'h', 'hr', 'r', 'rbi', 'sb', 'so'].sort(),
+    );
+
+    // 1번 표의 값이 2번 표 반영으로 지워지지 않았는지
+    expect(snapshot.hitting['김도영']).toEqual({
+      r: 143,
+      h: 189,
+      hr: 38,
+      rbi: 109,
+      sb: 40,
+      bb: 66,
+      so: 97,
+      gdp: 7,
+    });
+  });
+
   it('붙여넣은 표로 로토서리 순위가 계산된다', () => {
     let snapshot = emptySnapshot(2026);
-    snapshot = applyImport(snapshot, HITTERS, 'hitter');
-    snapshot = applyImport(snapshot, PITCHERS, 'pitcher');
+    snapshot = importTable(snapshot, HITTER_BASIC1, 'hitter');
+    snapshot = importTable(snapshot, HITTER_BASIC2, 'hitter');
+    snapshot = importTable(snapshot, PITCHERS, 'pitcher');
 
     expect(Object.keys(snapshot.players)).toHaveLength(6);
-    expect(Object.keys(snapshot.hitting)).toHaveLength(4);
-    expect(Object.keys(snapshot.pitching)).toHaveLength(2);
 
-    // 2인 리그를 구성한다
     snapshot.managers = [
       { id: 'm1', name: '참가자1' },
       { id: 'm2', name: '참가자2' },
@@ -68,51 +89,63 @@ describe('임포트 → 순위표 통합', () => {
 
     const standings = computeStandings(snapshot);
     expect(standings.maxPointsPerCategory).toBe(2);
-    expect(standings.rows).toHaveLength(2);
 
     const m1 = standings.rows.find((r) => r.managerId === 'm1')!;
     const m2 = standings.rows.find((r) => r.managerId === 'm2')!;
 
     // 홈런: m1 = 38 + 33 = 71, m2 = 15 + 32 = 47 → m1 승
-    expect(m1.cells.hr.value).toBe(71);
-    expect(m2.cells.hr.value).toBe(47);
-    expect(m1.cells.hr.points).toBe(2);
-    expect(m2.cells.hr.points).toBe(1);
+    expect(m1.cells.b_hr.value).toBe(71);
+    expect(m2.cells.b_hr.value).toBe(47);
+    expect(m1.cells.b_hr.points).toBe(2);
 
-    // 팀 타율: m1 = (189 + 166) / (544 + 484) = 355/1028
-    expect(m1.cells.avg.value).toBeCloseTo(355 / 1028, 10);
-    // m2 = (202 + 174) / (574 + 546) = 376/1120
-    expect(m2.cells.avg.value).toBeCloseTo(376 / 1120, 10);
+    // 삼진(마이너스): m1 = 97 + 70 = 167, m2 = 76 + 102 = 178 → 적은 m1이 상위
+    expect(m1.cells.b_so.value).toBe(167);
+    expect(m2.cells.b_so.value).toBe(178);
+    expect(m1.cells.b_so.points).toBe(2);
+    expect(m2.cells.b_so.points).toBe(1);
 
-    // 팀 ERA: m1은 원태인 단독 (65 * 9) / (159 + 2/3)
-    expect(m1.cells.era.value).toBeCloseTo((65 * 9) / (159 + 2 / 3), 8);
-    // m2는 네일 단독 (42 * 9) / (149 + 1/3) → 더 낮으므로 m2가 상위
-    expect(m2.cells.era.value).toBeCloseTo((42 * 9) / (149 + 1 / 3), 8);
-    expect(m2.cells.era.points).toBe(2);
-    expect(m1.cells.era.points).toBe(1);
+    // 병살타(마이너스): m1 = 7 + 11 = 18, m2 = 18 + 14 = 32 → m1이 상위
+    expect(m1.cells.b_gdp.value).toBe(18);
+    expect(m1.cells.b_gdp.points).toBe(2);
 
-    // 리그 총점은 부문수 × N(N+1)/2 = 10 × 3 = 30
-    expect(m1.totalPoints + m2.totalPoints).toBeCloseTo(30, 10);
-  });
+    // 패전(마이너스): m1 원태인 6패, m2 네일 5패 → m2가 상위
+    expect(m1.cells.p_l.value).toBe(6);
+    expect(m2.cells.p_l.value).toBe(5);
+    expect(m2.cells.p_l.points).toBe(2);
 
-  it('여러 페이지를 이어 붙여넣어도 선수가 누적된다', () => {
-    let snapshot = emptySnapshot(2026);
-    const page1 = HITTERS.split('\n').slice(0, 3).join('\n');
-    const page2 = [HITTERS.split('\n')[0], ...HITTERS.split('\n').slice(3)].join('\n');
+    // 투수 볼넷(마이너스): m1 43, m2 35 → m2가 상위
+    expect(m2.cells.p_bb.points).toBe(2);
 
-    snapshot = applyImport(snapshot, page1, 'hitter');
-    expect(Object.keys(snapshot.hitting)).toHaveLength(2);
+    // 이닝 합산 (분수 표기가 소수로 정규화되어 있어야 한다)
+    expect(m1.cells.p_ip.value).toBeCloseTo(159 + 2 / 3, 8);
 
-    snapshot = applyImport(snapshot, page2, 'hitter');
-    expect(Object.keys(snapshot.hitting)).toHaveLength(4);
+    // 리그 총점은 부문수 15 × N(N+1)/2 = 15 × 3 = 45
+    expect(m1.totalPoints + m2.totalPoints).toBeCloseTo(45, 10);
   });
 
   it('같은 표를 다시 넣으면 스탯이 두 배가 되지 않고 갱신된다', () => {
     let snapshot = emptySnapshot(2026);
-    snapshot = applyImport(snapshot, HITTERS, 'hitter');
+    snapshot = importTable(snapshot, HITTER_BASIC1, 'hitter');
     const before = snapshot.hitting['김도영'].hr;
 
-    snapshot = applyImport(snapshot, HITTERS, 'hitter');
+    snapshot = importTable(snapshot, HITTER_BASIC1, 'hitter');
     expect(snapshot.hitting['김도영'].hr).toBe(before);
+  });
+
+  it('교체 옵션은 해당 역할의 스탯과 채운 항목 기록을 함께 초기화한다', () => {
+    let snapshot = emptySnapshot(2026);
+    snapshot = importTable(snapshot, HITTER_BASIC1, 'hitter');
+    snapshot = importTable(snapshot, HITTER_BASIC2, 'hitter');
+    snapshot = importTable(snapshot, PITCHERS, 'pitcher');
+
+    const result = parseStatTable(HITTER_BASIC1, 'hitter');
+    snapshot = applyImport(snapshot, result, { replaceExisting: true, now: NOW });
+
+    // 타자는 1번 표 항목만 남는다
+    expect(snapshot.importedFields.hitting.sort()).toEqual(['h', 'hr', 'r', 'rbi', 'sb'].sort());
+    expect(snapshot.hitting['김도영'].bb).toBe(0);
+    // 투수 쪽은 영향 없다
+    expect(snapshot.importedFields.pitching.length).toBe(8);
+    expect(snapshot.pitching['원태인'].w).toBe(15);
   });
 });

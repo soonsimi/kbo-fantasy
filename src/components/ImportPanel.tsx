@@ -1,26 +1,45 @@
 import { useMemo, useState } from 'react';
-import { FIELD_LABELS } from '../import/columns';
-import { parseStatTable, playerKey } from '../import/parseStatTable';
+import { fieldLabel, statFieldsFor } from '../import/columns';
+import { applyImport } from '../import/applyImport';
+import { parseStatTable } from '../import/parseStatTable';
 import type { ParseResult } from '../import/parseStatTable';
 import { formatInnings } from '../domain/innings';
-import type { LeagueSnapshot, PlayerRole } from '../domain/types';
+import type { LeagueSnapshot, PlayerRole, StatField } from '../domain/types';
 
 interface Props {
   snapshot: LeagueSnapshot;
   update: (mutate: (current: LeagueSnapshot) => LeagueSnapshot) => void;
 }
 
-const GUIDE: Record<PlayerRole, { title: string; url: string; needs: string }> = {
-  hitter: {
-    title: 'KBO 기록실 → 선수 기록 → 타자',
-    url: 'https://www.koreabaseball.com/Record/Player/HitterBasic/Basic1.aspx',
-    needs: '선수명, AB(타수), H(안타), HR, RBI, R(득점), SB(도루)',
-  },
-  pitcher: {
-    title: 'KBO 기록실 → 선수 기록 → 투수',
-    url: 'https://www.koreabaseball.com/Record/Player/PitcherBasic/Basic1.aspx',
-    needs: '선수명, IP(이닝), ER(자책점), H(피안타), BB(볼넷), W(승), SV, SO(탈삼진)',
-  },
+/**
+ * 필요한 항목이 한 화면에 다 없다. 어느 페이지에서 무엇을 가져오는지 안내한다.
+ * KBO 기록실은 타자 기본기록1/2, 투수 기본기록1/2로 나뉘어 있다.
+ */
+const SOURCES: Record<PlayerRole, Array<{ title: string; url: string; gives: string }>> = {
+  hitter: [
+    {
+      title: '타자 기본기록 1',
+      url: 'https://www.koreabaseball.com/Record/Player/HitterBasic/Basic1.aspx',
+      gives: 'R, H, HR, RBI, SB',
+    },
+    {
+      title: '타자 기본기록 2',
+      url: 'https://www.koreabaseball.com/Record/Player/HitterBasic/Basic2.aspx',
+      gives: 'BB, SO, GDP',
+    },
+  ],
+  pitcher: [
+    {
+      title: '투수 기본기록 1',
+      url: 'https://www.koreabaseball.com/Record/Player/PitcherBasic/Basic1.aspx',
+      gives: 'W, L, SV, HLD, IP, H, BB, SO',
+    },
+    {
+      title: '투수 기본기록 2',
+      url: 'https://www.koreabaseball.com/Record/Player/PitcherBasic/Basic2.aspx',
+      gives: '1번 표에 없는 항목이 있을 때',
+    },
+  ],
 };
 
 export function ImportPanel({ snapshot, update }: Props) {
@@ -34,7 +53,7 @@ export function ImportPanel({ snapshot, update }: Props) {
     [text, role],
   );
 
-  const canApply = result !== null && result.rows.length > 0 && result.missingFields.length === 0;
+  const canApply = result !== null && result.fatal === null && result.rows.length > 0;
 
   const handleFile = async (file: File) => {
     setText(await file.text());
@@ -44,37 +63,20 @@ export function ImportPanel({ snapshot, update }: Props) {
   const apply = () => {
     if (!result || !canApply) return;
 
-    update((current) => {
-      const players = { ...current.players };
-      const hitting = replaceExisting && role === 'hitter' ? {} : { ...current.hitting };
-      const pitching = replaceExisting && role === 'pitcher' ? {} : { ...current.pitching };
+    update((current) => applyImport(current, result, { replaceExisting }));
 
-      for (const row of result.rows) {
-        const id = playerKey(row.name);
-        players[id] = {
-          id,
-          name: row.name,
-          kboTeam: row.kboTeam ?? players[id]?.kboTeam ?? '',
-          role,
-        };
-        if (row.hitting) hitting[id] = row.hitting;
-        if (row.pitching) pitching[id] = row.pitching;
-      }
-
-      return {
-        ...current,
-        players,
-        hitting,
-        pitching,
-        statsUpdatedAt: new Date().toISOString(),
-      };
-    });
-
-    setApplied(`${result.rows.length}명의 ${role === 'hitter' ? '타자' : '투수'} 기록을 반영했습니다.`);
+    const filled = result.providedFields.map((f) => fieldLabel(f, role)).join(', ');
+    setApplied(
+      `${result.rows.length}명의 ${role === 'hitter' ? '타자' : '투수'} 기록에 ${filled} 을(를) 반영했습니다.`,
+    );
     setText('');
   };
 
-  const guide = GUIDE[role];
+  const needed = statFieldsFor(role);
+  const filledSoFar = new Set<StatField>(
+    role === 'hitter' ? snapshot.importedFields.hitting : snapshot.importedFields.pitching,
+  );
+  const stillMissing = needed.filter((f) => !filledSoFar.has(f));
 
   return (
     <div className="import">
@@ -111,14 +113,22 @@ export function ImportPanel({ snapshot, update }: Props) {
           </label>
         </div>
 
-        <p className="hint">
-          출처: <strong>{guide.title}</strong>{' '}
-          <a href={guide.url} target="_blank" rel="noreferrer noopener">
-            열기
-          </a>
-          <br />
-          필요한 열: {guide.needs}
-        </p>
+        <div className="sources">
+          <p className="hint">
+            필요한 항목이 한 페이지에 다 없습니다. 아래 표를 차례로 붙여넣으면 열이 하나씩
+            채워집니다.
+          </p>
+          <ul>
+            {SOURCES[role].map((source) => (
+              <li key={source.url}>
+                <a href={source.url} target="_blank" rel="noreferrer noopener">
+                  {source.title}
+                </a>
+                <span className="gives">{source.gives}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
 
         <textarea
           value={text}
@@ -145,36 +155,43 @@ export function ImportPanel({ snapshot, update }: Props) {
               checked={replaceExisting}
               onChange={(e) => setReplaceExisting(e.target.checked)}
             />
-            기존 {role === 'hitter' ? '타자' : '투수'} 스탯을 모두 지우고 교체
+            기존 {role === 'hitter' ? '타자' : '투수'} 스탯을 모두 지우고 시작
           </label>
         </div>
-        <p className="hint">
-          KBO 기록실은 페이지가 나뉘어 있습니다. 여러 페이지를 이어서 붙여넣을 때는 교체 옵션을
-          끄고 한 페이지씩 넣으세요. 켜면 이전에 넣은 페이지가 지워집니다.
-        </p>
+        {replaceExisting && (
+          <p className="alert warn">
+            이 표에 있는 열만 채워집니다. 이미 넣어둔 다른 표의 항목(
+            {stillMissing.length < needed.length
+              ? needed
+                  .filter((f) => filledSoFar.has(f))
+                  .map((f) => fieldLabel(f, role))
+                  .join(', ')
+              : '없음'}
+            )도 함께 지워지니, 시즌을 처음부터 다시 넣을 때만 켜세요.
+          </p>
+        )}
       </section>
 
       {applied && <p className="ok">{applied}</p>}
 
-      {result && (
+      {result?.fatal && <p className="alert error">{result.fatal}</p>}
+
+      {result && !result.fatal && (
         <section className="card">
           <h3>미리보기</h3>
 
-          {result.missingFields.length > 0 && (
-            <div className="alert error">
-              <strong>필수 열이 없어 반영할 수 없습니다.</strong>
-              <ul>
-                {result.missingFields.map((f) => (
-                  <li key={f}>{FIELD_LABELS[f]}</li>
-                ))}
-              </ul>
-              표의 머리글까지 함께 복사했는지, 필요한 열이 보이는 화면인지 확인하세요.
-            </div>
-          )}
-
           <p className="hint">
-            인식한 선수 {result.rows.length}명 / 사용한 열{' '}
-            {[...result.mapping.values()].map((f) => FIELD_LABELS[f]).join(', ') || '없음'}
+            인식한 선수 {result.rows.length}명
+            <br />
+            이 표에서 채울 항목:{' '}
+            <strong>{result.providedFields.map((f) => fieldLabel(f, role)).join(', ')}</strong>
+            {result.absentFields.length > 0 && (
+              <>
+                <br />
+                이 표에 없는 항목: {result.absentFields.map((f) => fieldLabel(f, role)).join(', ')}
+                {' '}— 다른 표에서 따로 넣으세요
+              </>
+            )}
             {result.unmappedHeaders.length > 0 && (
               <>
                 <br />
@@ -198,57 +215,31 @@ export function ImportPanel({ snapshot, update }: Props) {
             <div className="table-scroll">
               <table className="preview-table">
                 <thead>
-                  {role === 'hitter' ? (
-                    <tr>
-                      <th>선수</th>
-                      <th>팀</th>
-                      <th>AB</th>
-                      <th>H</th>
-                      <th>HR</th>
-                      <th>RBI</th>
-                      <th>R</th>
-                      <th>SB</th>
-                    </tr>
-                  ) : (
-                    <tr>
-                      <th>선수</th>
-                      <th>팀</th>
-                      <th>IP</th>
-                      <th>ER</th>
-                      <th>피안타</th>
-                      <th>BB</th>
-                      <th>W</th>
-                      <th>SV</th>
-                      <th>SO</th>
-                    </tr>
-                  )}
+                  <tr>
+                    <th>선수</th>
+                    <th>팀</th>
+                    {result.providedFields.map((f) => (
+                      <th key={f}>{fieldLabel(f, role)}</th>
+                    ))}
+                  </tr>
                 </thead>
                 <tbody>
                   {result.rows.slice(0, 8).map((row, i) => (
                     <tr key={`${row.name}-${i}`}>
                       <td>{row.name}</td>
                       <td>{row.kboTeam ?? '-'}</td>
-                      {row.hitting && (
-                        <>
-                          <td>{row.hitting.ab}</td>
-                          <td>{row.hitting.h}</td>
-                          <td>{row.hitting.hr}</td>
-                          <td>{row.hitting.rbi}</td>
-                          <td>{row.hitting.r}</td>
-                          <td>{row.hitting.sb}</td>
-                        </>
-                      )}
-                      {row.pitching && (
-                        <>
-                          <td>{formatInnings(row.pitching.ip)}</td>
-                          <td>{row.pitching.er}</td>
-                          <td>{row.pitching.hitsAllowed}</td>
-                          <td>{row.pitching.bb}</td>
-                          <td>{row.pitching.w}</td>
-                          <td>{row.pitching.sv}</td>
-                          <td>{row.pitching.so}</td>
-                        </>
-                      )}
+                      {result.providedFields.map((f) => {
+                        const value = row.stats[f];
+                        return (
+                          <td key={f}>
+                            {value === undefined
+                              ? '–'
+                              : f === 'ip'
+                                ? formatInnings(value)
+                                : value}
+                          </td>
+                        );
+                      })}
                     </tr>
                   ))}
                 </tbody>
@@ -266,7 +257,7 @@ export function ImportPanel({ snapshot, update }: Props) {
       )}
 
       <section className="card">
-        <h3>현재 저장된 선수</h3>
+        <h3>현재 저장된 데이터</h3>
         <p className="hint">
           타자 {Object.keys(snapshot.hitting).length}명 / 투수{' '}
           {Object.keys(snapshot.pitching).length}명
@@ -277,6 +268,16 @@ export function ImportPanel({ snapshot, update }: Props) {
             </>
           )}
         </p>
+        {stillMissing.length > 0 ? (
+          <p className="alert warn">
+            {role === 'hitter' ? '타자' : '투수'} 부문 중 아직 안 넣은 항목:{' '}
+            <strong>{stillMissing.map((f) => fieldLabel(f, role)).join(', ')}</strong>
+            <br />
+            해당 부문은 전원 0으로 계산되어 순위가 무의미해집니다.
+          </p>
+        ) : (
+          <p className="ok">{role === 'hitter' ? '타자' : '투수'} 부문 항목이 모두 채워졌습니다.</p>
+        )}
       </section>
     </div>
   );

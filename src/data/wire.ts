@@ -25,6 +25,7 @@ export interface LeagueDoc {
   players: Player[];
   hitting: Array<HittingLine & { playerId: PlayerId }>;
   pitching: Array<PitchingLine & { playerId: PlayerId }>;
+  importedFields?: LeagueSnapshot['importedFields'];
 }
 
 export function toDoc(snapshot: LeagueSnapshot): LeagueDoc {
@@ -36,6 +37,7 @@ export function toDoc(snapshot: LeagueSnapshot): LeagueDoc {
     players: Object.values(snapshot.players),
     hitting: Object.entries(snapshot.hitting).map(([playerId, line]) => ({ playerId, ...line })),
     pitching: Object.entries(snapshot.pitching).map(([playerId, line]) => ({ playerId, ...line })),
+    importedFields: snapshot.importedFields,
   };
 }
 
@@ -60,5 +62,9 @@ export function fromDoc(doc: LeagueDoc): LeagueSnapshot {
     players,
     hitting,
     pitching,
+    importedFields: {
+      hitting: doc.importedFields?.hitting ?? [],
+      pitching: doc.importedFields?.pitching ?? [],
+    },
   };
 }

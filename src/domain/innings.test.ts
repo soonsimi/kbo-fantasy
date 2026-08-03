@@ -48,4 +48,17 @@ describe('formatInnings', () => {
     // 1/3 이닝 4번 = 1과 1/3
     expect(formatInnings(THIRD * 4)).toBe('1 1/3');
   });
+
+  it('정수에 아주 가까운 값을 양쪽에서 같게 표시한다', () => {
+    // 표시값으로 동점을 판정하므로, 위아래로 미세하게 다른 값이
+    // '100' 과 '100.0' 으로 갈리면 같은 이닝이 다른 점수를 받는다
+    expect(formatInnings(100.0000001)).toBe('100');
+    expect(formatInnings(99.9999999)).toBe('100');
+  });
+
+  it('많은 선수의 이닝을 합산해도 표기가 깨지지 않는다', () => {
+    // 1/3 이닝 30번 = 10이닝
+    const sum = Array.from({ length: 30 }).reduce<number>((s) => s + THIRD, 0);
+    expect(formatInnings(sum)).toBe('10');
+  });
 });

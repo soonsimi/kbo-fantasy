@@ -12,10 +12,16 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import App from './App';
 
-const HITTER_TSV = [
-  '순위\t선수명\t팀명\tAVG\tG\tPA\tAB\tR\tH\t2B\t3B\tHR\tTB\tRBI\tSB',
-  '1\t김도영\tKIA\t0.347\t141\t625\t544\t143\t189\t29\t10\t38\t363\t109\t40',
-  '2\t구자욱\t삼성\t0.343\t129\t558\t484\t92\t166\t39\t1\t33\t306\t115\t13',
+const HITTER_BASIC1 = [
+  '순위\t선수명\t팀명\tR\tH\tHR\tRBI\tSB',
+  '1\t김도영\tKIA\t143\t189\t38\t109\t40',
+  '2\t구자욱\t삼성\t92\t166\t33\t115\t13',
+].join('\n');
+
+const HITTER_BASIC2 = [
+  '순위\t선수명\t팀명\tBB\tSO\tGDP',
+  '1\t김도영\tKIA\t66\t97\t7',
+  '2\t구자욱\t삼성\t58\t70\t11',
 ].join('\n');
 
 beforeEach(() => {
@@ -25,6 +31,14 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
 });
+
+/** 임포트 탭에서 표 하나를 붙여넣고 반영한다 */
+async function pasteAndApply(text: string) {
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: text } });
+  await waitFor(() => screen.getByRole('button', { name: '2명 반영하기' }));
+  fireEvent.click(screen.getByRole('button', { name: '2명 반영하기' }));
+  await waitFor(() => screen.getByText(/반영했습니다/));
+}
 
 describe('App', () => {
   it('앱이 마운트되고 localStorage 저장소로 연결된다', async () => {
@@ -50,8 +64,7 @@ describe('App', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '참가자 · 로스터' }));
 
-    const input = screen.getByPlaceholderText('참가자 이름');
-    fireEvent.change(input, { target: { value: '홍길동' } });
+    fireEvent.change(screen.getByPlaceholderText('참가자 이름'), { target: { value: '홍길동' } });
     fireEvent.click(screen.getByRole('button', { name: '추가' }));
 
     await waitFor(() => {
@@ -60,40 +73,62 @@ describe('App', () => {
     expect(screen.getByText(/참가자 1명/)).toBeTruthy();
   });
 
-  it('표를 붙여넣으면 미리보기가 나오고 반영된다', async () => {
+  it('아직 안 넣은 항목을 알려준다', async () => {
     render(<App />);
     await waitFor(() => screen.getByText(/참가자가 없습니다/));
 
     fireEvent.click(screen.getByRole('button', { name: '스탯 불러오기' }));
 
-    const textarea = screen.getByRole('textbox');
-    fireEvent.change(textarea, { target: { value: HITTER_TSV } });
+    // 아무것도 넣기 전에는 8개 항목 전부 미입력
+    expect(screen.getByText(/아직 안 넣은 항목/)).toBeTruthy();
+
+    await pasteAndApply(HITTER_BASIC1);
+
+    // 1번 표를 넣으면 BB·SO·GDP만 남는다
+    await waitFor(() => {
+      const missing = screen.getByText(/아직 안 넣은 항목/).parentElement!;
+      expect(missing.textContent).toMatch(/볼넷/);
+      expect(missing.textContent).toMatch(/병살타/);
+      expect(missing.textContent).not.toMatch(/홈런/);
+    });
+  });
+
+  it('두 표를 이어 넣으면 타자 항목이 모두 채워진다', async () => {
+    render(<App />);
+    await waitFor(() => screen.getByText(/참가자가 없습니다/));
+    fireEvent.click(screen.getByRole('button', { name: '스탯 불러오기' }));
+
+    await pasteAndApply(HITTER_BASIC1);
+    await pasteAndApply(HITTER_BASIC2);
 
     await waitFor(() => {
-      expect(screen.getByText(/인식한 선수 2명/)).toBeTruthy();
+      expect(screen.getByText(/타자 부문 항목이 모두 채워졌습니다/)).toBeTruthy();
     });
-    expect(screen.getByText('김도영')).toBeTruthy();
+  });
 
-    fireEvent.click(screen.getByRole('button', { name: '2명 반영하기' }));
+  it('선수명 열이 없는 표는 반영을 막는다', async () => {
+    render(<App />);
+    await waitFor(() => screen.getByText(/참가자가 없습니다/));
+    fireEvent.click(screen.getByRole('button', { name: '스탯 불러오기' }));
+
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: { value: 'R\tH\tHR\n143\t189\t38' },
+    });
 
     await waitFor(() => {
-      expect(screen.getByText(/2명의 타자 기록을 반영했습니다/)).toBeTruthy();
+      expect(screen.getByText(/선수명 열을 찾지 못했습니다/)).toBeTruthy();
     });
-    expect(screen.getByText(/타자 2명/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /반영하기/ })).toBeNull();
   });
 
   it('참가자와 스탯이 모두 있으면 순위표에 점수가 표시된다', async () => {
     render(<App />);
     await waitFor(() => screen.getByText(/참가자가 없습니다/));
 
-    // 스탯 먼저 넣는다
     fireEvent.click(screen.getByRole('button', { name: '스탯 불러오기' }));
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: HITTER_TSV } });
-    await waitFor(() => screen.getByRole('button', { name: '2명 반영하기' }));
-    fireEvent.click(screen.getByRole('button', { name: '2명 반영하기' }));
-    await waitFor(() => screen.getByText(/타자 2명/));
+    await pasteAndApply(HITTER_BASIC1);
+    await pasteAndApply(HITTER_BASIC2);
 
-    // 참가자 2명 등록
     fireEvent.click(screen.getByRole('button', { name: '참가자 · 로스터' }));
     for (const name of ['가팀', '나팀']) {
       fireEvent.change(screen.getByPlaceholderText('참가자 이름'), { target: { value: name } });
@@ -105,15 +140,15 @@ describe('App', () => {
     fireEvent.click(screen.getAllByRole('button', { name: '선수 지명' })[0]);
     await waitFor(() => screen.getByPlaceholderText('선수명 또는 팀으로 검색'));
     fireEvent.click(screen.getByRole('button', { name: /김도영/ }));
-
     await waitFor(() => {
       expect(screen.getByRole('heading', { level: 3, name: /가팀/ }).textContent).toMatch(/1명/);
     });
 
-    // 순위표에서 점수 확인
     fireEvent.click(screen.getByRole('button', { name: '순위표' }));
+
+    // 15부문 × 2명 = 30점 만점
     await waitFor(() => {
-      expect(screen.getByText(/만점은 20점입니다/)).toBeTruthy();
+      expect(screen.getByText(/만점은 30점입니다/)).toBeTruthy();
     });
 
     const rows = screen.getAllByRole('row');

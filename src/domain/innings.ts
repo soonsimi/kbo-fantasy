@@ -54,14 +54,27 @@ export function parseInnings(raw: string): number | null {
   return whole + Number(`0.${frac}`);
 }
 
-/** 소수 이닝을 "150 1/3" 형태로 표시한다. */
+/**
+ * 소수 이닝을 "150 1/3" 형태로 표시한다.
+ *
+ * 3분의 1 단위로 반올림해서 판정한다. 정수 부분을 먼저 떼어내면
+ * 99.9999999 처럼 정수에 아주 가까운 값이 "99와 0.9999" 로 갈려
+ * "100" 이 아니라 "100.0" 으로 표시되고, 표시값으로 동점을 판정하는
+ * 순위 산정에서 같은 이닝이 다른 부문 점수를 받게 된다.
+ */
 export function formatInnings(ip: number): string {
   if (!Number.isFinite(ip) || ip < 0) return '-';
-  const whole = Math.floor(ip + 1e-9);
-  const remainder = ip - whole;
 
-  if (remainder < 1e-6) return String(whole);
-  if (Math.abs(remainder - THIRD) < 0.02) return `${whole} 1/3`;
-  if (Math.abs(remainder - 2 * THIRD) < 0.02) return `${whole} 2/3`;
+  const thirds = ip * 3;
+  const nearest = Math.round(thirds);
+
+  // 0.06 thirds = 0.02 이닝. 합산 누적 오차를 넉넉히 흡수한다.
+  if (Math.abs(thirds - nearest) < 0.06) {
+    const whole = Math.floor(nearest / 3);
+    const remainder = nearest % 3;
+    if (remainder === 0) return String(whole);
+    return `${whole} ${remainder}/3`;
+  }
+
   return ip.toFixed(2);
 }

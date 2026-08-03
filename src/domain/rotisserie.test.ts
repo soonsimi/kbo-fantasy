@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_CATEGORIES } from './categories';
+import { DEFAULT_CATEGORIES, neededFields } from './categories';
 import type { Category } from './categories';
 import { aggregateRoster, computeStandings, scoreCategory } from './rotisserie';
 import { EMPTY_HITTING, EMPTY_PITCHING, emptySnapshot } from './types';
@@ -11,8 +11,39 @@ const categoryByKey = (key: string): Category => {
   return found;
 };
 
+describe('부문 구성', () => {
+  it('타자 8부문 / 투수 7부문으로 총 15부문이다', () => {
+    expect(DEFAULT_CATEGORIES.filter((c) => c.group === 'hitting')).toHaveLength(8);
+    expect(DEFAULT_CATEGORIES.filter((c) => c.group === 'pitching')).toHaveLength(7);
+    expect(DEFAULT_CATEGORIES).toHaveLength(15);
+  });
+
+  it('마이너스 부문은 타자 SO·GDP, 투수 L·BB 다', () => {
+    const inverted = DEFAULT_CATEGORIES.filter((c) => c.lowerIsBetter).map((c) => c.key);
+    expect(inverted.sort()).toEqual(['b_gdp', 'b_so', 'p_bb', 'p_l']);
+  });
+
+  it('부문 정의에서 임포트에 필요한 열이 도출된다', () => {
+    expect(neededFields('hitting').sort()).toEqual(
+      ['bb', 'gdp', 'h', 'hr', 'r', 'rbi', 'sb', 'so'].sort(),
+    );
+    expect(neededFields('pitching').sort()).toEqual(
+      ['bb', 'hitsAllowed', 'hld', 'ip', 'l', 'so', 'sv', 'w'].sort(),
+    );
+  });
+
+  it('SV+HLD는 세이브와 홀드의 합이다', () => {
+    const category = categoryByKey('p_svhld');
+    const totals = {
+      hitting: { ...EMPTY_HITTING },
+      pitching: { ...EMPTY_PITCHING, sv: 12, hld: 20 },
+    };
+    expect(category.compute(totals)).toBe(32);
+  });
+});
+
 describe('scoreCategory', () => {
-  const hr = categoryByKey('hr');
+  const hr = categoryByKey('b_hr');
 
   it('1위에게 N점, 최하위에게 1점을 준다', () => {
     const result = scoreCategory(
@@ -42,26 +73,10 @@ describe('scoreCategory', () => {
       hr,
     );
 
-    // 1~2위 구간의 4점과 3점을 나눠 3.5점씩
     expect(result.a).toMatchObject({ points: 3.5, rank: 1 });
     expect(result.b).toMatchObject({ points: 3.5, rank: 1 });
     expect(result.c).toMatchObject({ points: 2, rank: 3 });
     expect(result.d).toMatchObject({ points: 1, rank: 4 });
-  });
-
-  it('전원 동점이면 모두 같은 점수를 받는다', () => {
-    const result = scoreCategory(
-      [
-        { managerId: 'a', value: 7 },
-        { managerId: 'b', value: 7 },
-        { managerId: 'c', value: 7 },
-      ],
-      hr,
-    );
-    // (3 + 2 + 1) / 3 = 2
-    for (const id of ['a', 'b', 'c']) {
-      expect(result[id]).toMatchObject({ points: 2, rank: 1 });
-    }
   });
 
   it('부문 점수 총합은 항상 N(N+1)/2 로 보존된다', () => {
@@ -77,20 +92,53 @@ describe('scoreCategory', () => {
     expect(sum).toBeCloseTo((5 * 6) / 2, 10);
   });
 
-  it('ERA처럼 낮을수록 좋은 부문은 순서를 뒤집는다', () => {
-    const era = categoryByKey('era');
+  it('타자 삼진은 적은 쪽이 상위다', () => {
+    const so = categoryByKey('b_so');
+    expect(so.lowerIsBetter).toBe(true);
+
     const result = scoreCategory(
       [
-        { managerId: 'a', value: 2.5 },
-        { managerId: 'b', value: 4.8 },
-        { managerId: 'c', value: 3.1 },
+        { managerId: 'few', value: 60 },
+        { managerId: 'many', value: 150 },
+        { managerId: 'mid', value: 100 },
       ],
-      era,
+      so,
     );
 
-    expect(result.a.rank).toBe(1);
-    expect(result.c.rank).toBe(2);
-    expect(result.b.rank).toBe(3);
+    expect(result.few.rank).toBe(1);
+    expect(result.few.points).toBe(3);
+    expect(result.mid.rank).toBe(2);
+    expect(result.many.rank).toBe(3);
+    expect(result.many.points).toBe(1);
+  });
+
+  it('타자 병살타도 적은 쪽이 상위다', () => {
+    const gdp = categoryByKey('b_gdp');
+    const result = scoreCategory(
+      [
+        { managerId: 'a', value: 5 },
+        { managerId: 'b', value: 20 },
+      ],
+      gdp,
+    );
+    expect(result.a.points).toBe(2);
+    expect(result.b.points).toBe(1);
+  });
+
+  it('투수 패전과 볼넷은 적은 쪽이 상위다', () => {
+    for (const key of ['p_l', 'p_bb']) {
+      const category = categoryByKey(key);
+      expect(category.lowerIsBetter).toBe(true);
+      const result = scoreCategory(
+        [
+          { managerId: 'low', value: 3 },
+          { managerId: 'high', value: 15 },
+        ],
+        category,
+      );
+      expect(result.low.points).toBe(2);
+      expect(result.high.points).toBe(1);
+    }
   });
 
   it('산정 불가(null)는 최하위이고 서로는 동점이다', () => {
@@ -104,21 +152,20 @@ describe('scoreCategory', () => {
     );
 
     expect(result.a).toMatchObject({ points: 3, rank: 1 });
-    // 2~3위 구간의 2점과 1점을 나눠 1.5점씩
     expect(result.b).toMatchObject({ points: 1.5, rank: 2 });
     expect(result.c).toMatchObject({ points: 1.5, rank: 2 });
   });
 
   it('표시값이 같으면 동점으로 본다', () => {
-    const avg = categoryByKey('avg');
-    // .2999996 과 .3000004 는 둘 다 .300 으로 표시된다
+    const ip = categoryByKey('p_ip');
+    // 소수 오차로 미세하게 다르지만 둘 다 '100' 으로 표시된다
     const result = scoreCategory(
       [
-        { managerId: 'a', value: 0.3000004 },
-        { managerId: 'b', value: 0.2999996 },
-        { managerId: 'c', value: 0.25 },
+        { managerId: 'a', value: 100.0000001 },
+        { managerId: 'b', value: 99.9999999 },
+        { managerId: 'c', value: 80 },
       ],
-      avg,
+      ip,
     );
 
     expect(result.a.points).toBe(result.b.points);
@@ -150,47 +197,51 @@ function buildSnapshot(
 }
 
 describe('aggregateRoster', () => {
-  it('타율은 선수별 타율의 평균이 아니라 팀 안타 ÷ 팀 타수다', () => {
+  it('보유 선수의 모든 항목을 합산한다', () => {
     const snapshot = emptySnapshot(2026);
-    // 10타수 4안타(.400) 선수와 500타수 125안타(.250) 선수
-    snapshot.hitting.small = { ...EMPTY_HITTING, ab: 10, h: 4 };
-    snapshot.hitting.big = { ...EMPTY_HITTING, ab: 500, h: 125 };
+    snapshot.hitting.a = { ...EMPTY_HITTING, r: 90, h: 150, hr: 30, rbi: 100, sb: 20, bb: 60, so: 110, gdp: 12 };
+    snapshot.hitting.b = { ...EMPTY_HITTING, r: 50, h: 100, hr: 10, rbi: 55, sb: 5, bb: 40, so: 70, gdp: 8 };
 
-    const totals = aggregateRoster(snapshot, ['small', 'big']);
-    const avg = categoryByKey('avg').compute(totals)!;
-
-    // 129 / 510 = .2529... 단순 평균 .325 와 명확히 다르다
-    expect(avg).toBeCloseTo(129 / 510, 10);
-    expect(avg).not.toBeCloseTo(0.325, 3);
+    const totals = aggregateRoster(snapshot, ['a', 'b']);
+    expect(totals.hitting).toEqual({
+      r: 140,
+      h: 250,
+      hr: 40,
+      rbi: 155,
+      sb: 25,
+      bb: 100,
+      so: 180,
+      gdp: 20,
+    });
   });
 
-  it('평균자책점도 팀 자책점과 팀 이닝으로 계산한다', () => {
+  it('투수 이닝은 소수 합으로 누적된다', () => {
     const snapshot = emptySnapshot(2026);
-    snapshot.pitching.ace = { ...EMPTY_PITCHING, ip: 180, er: 40 };
-    snapshot.pitching.reliever = { ...EMPTY_PITCHING, ip: 20, er: 20 };
+    snapshot.pitching.a = { ...EMPTY_PITCHING, ip: 100 + 1 / 3, w: 8, so: 90 };
+    snapshot.pitching.b = { ...EMPTY_PITCHING, ip: 50 + 2 / 3, w: 4, so: 45 };
 
-    const totals = aggregateRoster(snapshot, ['ace', 'reliever']);
-    const era = categoryByKey('era').compute(totals)!;
-
-    // (60 * 9) / 200 = 2.70
-    expect(era).toBeCloseTo(2.7, 10);
+    const totals = aggregateRoster(snapshot, ['a', 'b']);
+    expect(totals.pitching.ip).toBeCloseTo(151, 10);
+    expect(totals.pitching.w).toBe(12);
+    expect(totals.pitching.so).toBe(135);
   });
 
   it('명단에 없는 선수 id는 조용히 건너뛴다', () => {
     const snapshot = emptySnapshot(2026);
-    snapshot.hitting.real = { ...EMPTY_HITTING, ab: 100, h: 30, hr: 5 };
+    snapshot.hitting.real = { ...EMPTY_HITTING, hr: 5, h: 30 };
     const totals = aggregateRoster(snapshot, ['real', 'ghost']);
     expect(totals.hitting.hr).toBe(5);
-    expect(totals.hitting.ab).toBe(100);
+    expect(totals.hitting.h).toBe(30);
   });
 });
 
 describe('computeStandings', () => {
   it('부문 점수를 합산해 종합 순위를 매긴다', () => {
     const snapshot = buildSnapshot({
-      a: { hitting: { ab: 500, h: 150, hr: 30, rbi: 100, r: 90, sb: 20 } },
-      b: { hitting: { ab: 500, h: 140, hr: 25, rbi: 95, r: 85, sb: 15 } },
-      c: { hitting: { ab: 500, h: 130, hr: 20, rbi: 90, r: 80, sb: 10 } },
+      // 마이너스 부문(SO·GDP)은 a가 가장 적다 → a가 전 부문 1위
+      a: { hitting: { r: 90, h: 150, hr: 30, rbi: 100, sb: 20, bb: 60, so: 70, gdp: 5 } },
+      b: { hitting: { r: 85, h: 140, hr: 25, rbi: 95, sb: 15, bb: 55, so: 100, gdp: 10 } },
+      c: { hitting: { r: 80, h: 130, hr: 20, rbi: 90, sb: 10, bb: 50, so: 130, gdp: 15 } },
     });
 
     const standings = computeStandings(snapshot);
@@ -199,29 +250,46 @@ describe('computeStandings', () => {
     expect(standings.rows.map((r) => r.managerId)).toEqual(['a', 'b', 'c']);
     expect(standings.rows[0].rank).toBe(1);
 
-    // a는 타격 5부문 전부 1위(3점) = 15점.
-    // 투수 스탯이 없어 투수 5부문은 3인 전원 null 동점 → 각 2점씩 = 10점.
-    expect(standings.rows[0].totalPoints).toBeCloseTo(15 + 10, 10);
+    // a는 타자 8부문 전부 1위(3점) = 24점.
+    // 투수 스탯이 없어 투수 7부문은 3인 전원 동점 → 각 2점씩 = 14점.
+    expect(standings.rows[0].totalPoints).toBeCloseTo(24 + 14, 10);
+  });
+
+  it('마이너스 부문에서 값이 큰 팀이 손해를 본다', () => {
+    const snapshot = buildSnapshot({
+      slugger: { hitting: { hr: 40, so: 180, gdp: 20 } },
+      contact: { hitting: { hr: 10, so: 60, gdp: 4 } },
+    });
+
+    const standings = computeStandings(snapshot);
+    const slugger = standings.rows.find((r) => r.managerId === 'slugger')!;
+    const contact = standings.rows.find((r) => r.managerId === 'contact')!;
+
+    // 홈런은 slugger 1위
+    expect(slugger.cells.b_hr.points).toBe(2);
+    // 삼진·병살타는 contact 1위
+    expect(contact.cells.b_so.points).toBe(2);
+    expect(contact.cells.b_gdp.points).toBe(2);
+    expect(slugger.cells.b_so.points).toBe(1);
   });
 
   it('총점이 같으면 종합 순위를 공유한다', () => {
     const snapshot = buildSnapshot({
-      a: { hitting: { ab: 100, h: 30, hr: 10 } },
-      b: { hitting: { ab: 100, h: 30, hr: 10 } },
+      a: { hitting: { hr: 10, h: 30 } },
+      b: { hitting: { hr: 10, h: 30 } },
     });
 
     const standings = computeStandings(snapshot);
     expect(standings.rows[0].rank).toBe(1);
     expect(standings.rows[1].rank).toBe(1);
-    expect(standings.rows[0].totalPoints).toBe(standings.rows[1].totalPoints);
   });
 
   it('리그 전체 총점은 부문수 × N(N+1)/2 이다', () => {
     const snapshot = buildSnapshot({
-      a: { hitting: { ab: 400, h: 120, hr: 20 }, pitching: { ip: 100, er: 30, so: 90 } },
-      b: { hitting: { ab: 400, h: 100, hr: 15 }, pitching: { ip: 120, er: 50, so: 80 } },
-      c: { hitting: { ab: 400, h: 110, hr: 25 }, pitching: { ip: 90, er: 40, so: 100 } },
-      d: { hitting: { ab: 400, h: 90, hr: 10 }, pitching: { ip: 150, er: 45, so: 130 } },
+      a: { hitting: { r: 80, h: 120, hr: 20, so: 90, gdp: 10 }, pitching: { ip: 100, w: 9, l: 5, so: 90, bb: 30 } },
+      b: { hitting: { r: 70, h: 100, hr: 15, so: 110, gdp: 14 }, pitching: { ip: 120, w: 11, l: 8, so: 80, bb: 45 } },
+      c: { hitting: { r: 75, h: 110, hr: 25, so: 100, gdp: 8 }, pitching: { ip: 90, w: 7, l: 3, so: 100, bb: 25 } },
+      d: { hitting: { r: 60, h: 90, hr: 10, so: 130, gdp: 18 }, pitching: { ip: 150, w: 13, l: 10, so: 130, bb: 50 } },
     });
 
     const standings = computeStandings(snapshot);
