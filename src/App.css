@@ -1,0 +1,345 @@
+.app {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 20px 64px;
+}
+
+header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.subtitle {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.storage {
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.saving {
+  color: var(--accent);
+}
+
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin: 18px 0;
+  flex-wrap: wrap;
+}
+
+.tabs button.active {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.card-head {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.card > .table-scroll,
+.card > textarea,
+.card > .row,
+.card > .picker,
+.card > .alert,
+.card > ul {
+  width: 100%;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.row input[type='text'] {
+  flex: 1 1 220px;
+}
+
+.role-select label,
+.checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.hint {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.empty {
+  padding: 28px 0;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+.ok {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--ok-bg);
+  color: var(--ok);
+  font-size: 14px;
+  margin-bottom: 14px;
+}
+
+.alert {
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  border: 1px solid transparent;
+}
+
+.alert ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.alert.error {
+  background: var(--error-bg);
+  border-color: var(--error-border);
+  color: var(--error-text);
+}
+
+.alert.warn {
+  background: var(--warn-bg);
+  border-color: var(--warn-border);
+  color: var(--warn-text);
+}
+
+/* --- 순위표 --- */
+
+.table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+}
+
+th,
+td {
+  padding: 7px 10px;
+  text-align: right;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+thead th {
+  color: var(--text-h);
+  font-weight: 600;
+  background: var(--bg);
+  position: sticky;
+  top: 0;
+}
+
+tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.group-head {
+  text-align: center;
+  border-left: 1px solid var(--border);
+}
+
+.col-rank {
+  text-align: center;
+  width: 48px;
+  color: var(--text-dim);
+}
+
+.col-manager {
+  text-align: left;
+  color: var(--text-h);
+  font-weight: 500;
+}
+
+.col-total {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text-h);
+  border-right: 1px solid var(--border);
+}
+
+.col-cat {
+  font-variant-numeric: tabular-nums;
+  min-width: 62px;
+}
+
+.col-cat.top {
+  background: var(--top-bg);
+}
+
+.lower-mark {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-left: 2px;
+}
+
+td.col-cat {
+  display: table-cell;
+}
+
+.cat-value {
+  display: block;
+  color: var(--text-h);
+}
+
+.cat-points {
+  display: block;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.legend {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.standings > .hint {
+  margin-bottom: 10px;
+}
+
+/* --- 로스터 --- */
+
+.count {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-dim);
+  margin-left: 4px;
+}
+
+.roster,
+.candidates {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+}
+
+.roster li {
+  display: grid;
+  grid-template-columns: 1fr 60px minmax(0, 1.6fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.roster li:last-child {
+  border-bottom: none;
+}
+
+.player-name {
+  color: var(--text-h);
+}
+
+.player-team,
+.player-role {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.player-stat {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.picker {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.candidates {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.candidates li {
+  border-bottom: 1px solid var(--border);
+}
+
+.candidates li:last-child {
+  border-bottom: none;
+}
+
+.candidates button {
+  display: grid;
+  grid-template-columns: 1fr 60px 44px;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-radius: 0;
+  background: none;
+  padding: 7px 10px;
+}
+
+.candidates button:hover {
+  background: var(--accent-bg);
+}
+
+/* --- 임포트 --- */
+
+.preview-table th,
+.preview-table td {
+  text-align: right;
+}
+
+.preview-table th:first-child,
+.preview-table td:first-child,
+.preview-table th:nth-child(2),
+.preview-table td:nth-child(2) {
+  text-align: left;
+}

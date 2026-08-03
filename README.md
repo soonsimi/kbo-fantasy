@@ -1,20 +1,118 @@
-# KBO Fantasy League
+# KBO 판타지 리그
 
-KBO 선수 스탯을 기반으로 하는 판타지 리그 웹 애플리케이션.
+KBO 선수 스탯을 기반으로 하는 로토서리(Rotisserie) 방식 판타지 리그 웹 애플리케이션.
 
-## 기술 스택
+- **방식**: 시즌 누적 점수제 (로토서리)
+- **규모**: 8~12명
+- **드래프트**: 시즌 초 1회
 
-- **프론트엔드**: Vite + React + TypeScript
-- **데이터**: Firebase Firestore (Google Cloud)
-- **배포**: Firebase Hosting
+## 산정 규칙
 
-## 개발 환경
+클래식 5x5, 총 10개 부문:
+
+| 구분 | 부문 |
+| --- | --- |
+| 타격 | HR(홈런), RBI(타점), R(득점), SB(도루), AVG(타율) |
+| 투구 | W(승), SV(세이브), SO(탈삼진), ERA(평균자책점 ↓), WHIP(↓) |
+
+- 부문마다 1위에게 N점(N = 참가 인원), 최하위에게 1점.
+- 동점자는 차지한 점수 구간을 균등 배분. 12인 리그에서 1위 동점 2명이면 (12+11)/2 = 11.5점씩.
+- ERA·WHIP는 낮을수록 상위.
+- 만점 = 10부문 × N점.
+
+비율 스탯(AVG·ERA·WHIP)은 **팀 합계에서 계산**한다. 선수별 값을 평균내지 않는다.
+타율 .400인 10타수 선수와 .250인 500타수 선수의 팀 타율은 두 값의 평균이 아니다.
+
+이닝은 `159 2/3` 같은 분수 표기와 `159.2` 형태를 모두 받아 소수로 정규화한다.
+야구 관례상 소수점 한 자리의 `.1`/`.2`는 1/3, 2/3을 뜻하므로 그대로 실수로 읽으면
+평균자책점 분모가 틀어진다 (`src/domain/innings.ts`).
+
+## 데이터 입력 방식
+
+**자동 크롤링은 하지 않는다.** KBO 공식 사이트와 스탯티즈 모두 robots.txt에서
+목적 구분 없이 봇 접근을 전면 차단하고 있다.
+
+```
+# koreabaseball.com/robots.txt
+# 본 사이트의 데이터를 사전 승인 없이 자동 수집·복제하는 행위를 금지합니다.
+User-agent: *
+Disallow: /
+```
+
+```
+# statiz.co.kr/robots.txt (Cloudflare 관리 블록 이후, 운영자 작성 영역)
+# 그 외 모든 봇 차단
+User-agent: *
+Disallow: /
+```
+
+대신 브라우저에서 직접 열람한 표를 복사해 붙여넣는다. 시즌 누적 방식이라
+**주 1회 갱신으로 충분**하고, 필요한 범위도 리그에 지명된 선수(12명 × 20명 ≈ 240명)뿐이다.
+CSV 파일 업로드도 지원한다.
+
+임포트 계층은 `ParseResult`를 돌려주는 어댑터로 분리되어 있다
+(`src/import/parseStatTable.ts`). 정식 데이터 제공 경로가 열리면 같은 형태를
+반환하는 모듈만 추가하면 되고 도메인·UI는 그대로 쓴다.
+
+## 실행
 
 ```bash
 pnpm install
-pnpm dev
+pnpm dev          # 개발 서버
+pnpm test         # 테스트 (42개)
+pnpm build        # 타입체크 + 프로덕션 빌드
+pnpm lint
 ```
 
-## 상태
+Firebase 설정 없이 바로 실행된다 (localStorage에 저장).
 
-초기 설정 단계.
+## Firestore 연결
+
+리그 참가자끼리 데이터를 공유하려면 Firebase를 붙인다.
+
+1. [Firebase 콘솔](https://console.firebase.google.com)에서 프로젝트 생성
+2. Firestore Database 활성화
+3. **Authentication에서 로그인 방법을 하나 이상 활성화** (Google 또는 익명)
+   — `firestore.rules`가 쓰기에 로그인을 요구하므로, 안 하면 저장 시 `permission-denied`가 난다
+4. `.env.example`을 `.env.local`로 복사하고 값 입력
+5. 보안 규칙 배포: `firebase deploy --only firestore:rules`
+
+`.env.local`이 채워지면 저장소가 자동으로 Firestore로 바뀌고, 다른 참가자의 변경이
+실시간으로 반영된다. Firebase SDK는 설정이 있을 때만 동적으로 로드되므로
+localStorage 모드에서는 번들에 포함되지 않는다.
+
+Firebase 웹 API 키는 비밀값이 아니라 프로젝트 식별자다. 실제 접근 통제는
+`firestore.rules`가 담당한다 — 저장소가 Public이므로 규칙이 유일한 방어선이다.
+
+## 구조
+
+```
+src/
+  domain/         순수 도메인 로직 (저장소·UI 의존 없음)
+    types.ts        누적 원시 스탯 타입
+    categories.ts   로토서리 부문 정의 (여기에 항목을 추가하면 엔진이 자동 반영)
+    rotisserie.ts   순위 산정 엔진
+    innings.ts      이닝 표기 파싱
+  import/         표 파싱
+    columns.ts      열 이름 → 필드 매핑 (타자/투수 역할별로 분리)
+    parseStatTable.ts
+  data/           저장소 (인터페이스 + localStorage/Firestore 구현)
+  components/     화면
+  useLeague.ts    저장소 연동 훅
+```
+
+순위 계산은 `LeagueSnapshot` 하나만 입력받는 순수 함수라, 저장 위치를 바꿔도
+산정 로직은 영향받지 않는다.
+
+## 기술 스택
+
+Vite + React 19 + TypeScript / Firebase Firestore / vitest
+
+## 아직 없는 것
+
+- **라이브 드래프트 룸**: 현재는 지명 결과를 입력하는 화면만 있다. 순서대로 돌아가는
+  스네이크 드래프트 진행 UI는 없다.
+- **로스터 상한·포지션 제약**: 인원수나 포지션 구성을 검증하지 않는다.
+- **주간 스냅샷/추이 그래프**: 현재 순위만 보여준다. 시간에 따른 변화 기록은 없다.
+- **인증 연동 화면**: 규칙은 로그인을 요구하지만 앱에 로그인 UI가 없다.
+  Firestore로 전환할 때 함께 붙여야 한다.

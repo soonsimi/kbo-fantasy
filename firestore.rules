@@ -1,0 +1,35 @@
+rules_version = '2';
+
+// KBO 판타지 리그 Firestore 보안 규칙
+//
+// 방침: 순위표는 누구나 볼 수 있고, 쓰기는 로그인한 사용자만 가능하다.
+// 저장소가 Public이므로 프로젝트 ID가 공개된다는 전제로 규칙을 짠다.
+// 규칙이 곧 유일한 접근 통제 수단이다 (웹 API 키는 비밀이 아니다).
+//
+// 배포: firebase deploy --only firestore:rules
+//
+// 쓰기를 하려면 Firebase 콘솔 → Authentication 에서 로그인 방법을
+// 하나 이상 활성화해야 한다 (Google 로그인 또는 익명 로그인).
+// 활성화 전에는 저장 시 permission-denied 가 발생한다.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /leagues/{season} {
+      // 시즌 순위는 공개
+      allow read: if true;
+
+      // 쓰기는 로그인 사용자만. 문서 구조가 최소한 맞는지도 함께 확인한다.
+      allow write: if request.auth != null
+                   && request.resource.data.season is int
+                   && request.resource.data.managers is list
+                   && request.resource.data.rosters is list
+                   && request.resource.data.players is list;
+    }
+
+    // 그 외 경로는 전부 차단
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

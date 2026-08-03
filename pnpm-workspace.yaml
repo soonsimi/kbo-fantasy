@@ -1,0 +1,4 @@
+# firebase와 protobufjs의 postinstall은 정상 동작에 필요하므로 허용한다.
+allowBuilds:
+  '@firebase/util': true
+  protobufjs: true
