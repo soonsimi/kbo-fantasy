@@ -2,10 +2,13 @@
  * 로토서리 부문 정의.
  *
  * 타자 8부문: R, H, HR, RBI, SB, BB, SO(−), GDP(−)
- * 투수 7부문: W, L(−), SV+HLD, IP, H, BB(−), SO
+ * 투수 7부문: W, L(−), SV+HLD, IP, H(−), BB(−), SO
  *
  * lowerIsBetter: true 인 부문은 값이 작을수록 상위 순위를 받는다.
- * (삼진·병살타·패전·볼넷처럼 적어야 좋은 항목)
+ * (타자 삼진·병살타, 투수 패전·피안타·볼넷처럼 적어야 좋은 항목)
+ *
+ * 주의: H는 타자에게는 안타(플러스), 투수에게는 피안타(마이너스)다.
+ * BB도 타자는 플러스, 투수는 마이너스다.
  *
  * 부문을 데이터로 선언해두면 산정 엔진은 부문의 의미를 몰라도 되고,
  * sourceFields 덕분에 "임포트에 필요한 열"도 이 배열에서 자동으로 도출된다.
@@ -166,9 +169,9 @@ export const DEFAULT_CATEGORIES: Category[] = [
   {
     key: 'p_h',
     label: 'H',
-    description: '피안타',
+    description: '피안타 — 적을수록 상위',
     group: 'pitching',
-    lowerIsBetter: false,
+    lowerIsBetter: true,
     sourceFields: ['hitsAllowed'],
     compute: (t) => t.pitching.hitsAllowed,
     format: whole,

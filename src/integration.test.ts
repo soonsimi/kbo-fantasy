@@ -116,6 +116,12 @@ describe('부분 임포트 → 순위표 통합', () => {
     // 투수 볼넷(마이너스): m1 43, m2 35 → m2가 상위
     expect(m2.cells.p_bb.points).toBe(2);
 
+    // 투수 피안타(마이너스): m1 원태인 160, m2 네일 128 → 적은 m2가 상위
+    expect(m1.cells.p_h.value).toBe(160);
+    expect(m2.cells.p_h.value).toBe(128);
+    expect(m2.cells.p_h.points).toBe(2);
+    expect(m1.cells.p_h.points).toBe(1);
+
     // 이닝 합산 (분수 표기가 소수로 정규화되어 있어야 한다)
     expect(m1.cells.p_ip.value).toBeCloseTo(159 + 2 / 3, 8);
 

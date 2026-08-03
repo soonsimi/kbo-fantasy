@@ -18,9 +18,19 @@ describe('부문 구성', () => {
     expect(DEFAULT_CATEGORIES).toHaveLength(15);
   });
 
-  it('마이너스 부문은 타자 SO·GDP, 투수 L·BB 다', () => {
+  it('마이너스 부문은 타자 SO·GDP, 투수 L·H·BB 다', () => {
     const inverted = DEFAULT_CATEGORIES.filter((c) => c.lowerIsBetter).map((c) => c.key);
-    expect(inverted.sort()).toEqual(['b_gdp', 'b_so', 'p_bb', 'p_l']);
+    expect(inverted.sort()).toEqual(['b_gdp', 'b_so', 'p_bb', 'p_h', 'p_l']);
+  });
+
+  it('H는 타자에게 플러스, 투수에게 마이너스다', () => {
+    expect(categoryByKey('b_h').lowerIsBetter).toBe(false);
+    expect(categoryByKey('p_h').lowerIsBetter).toBe(true);
+  });
+
+  it('BB도 타자에게 플러스, 투수에게 마이너스다', () => {
+    expect(categoryByKey('b_bb').lowerIsBetter).toBe(false);
+    expect(categoryByKey('p_bb').lowerIsBetter).toBe(true);
   });
 
   it('부문 정의에서 임포트에 필요한 열이 도출된다', () => {
@@ -125,8 +135,8 @@ describe('scoreCategory', () => {
     expect(result.b.points).toBe(1);
   });
 
-  it('투수 패전과 볼넷은 적은 쪽이 상위다', () => {
-    for (const key of ['p_l', 'p_bb']) {
+  it('투수 패전·피안타·볼넷은 적은 쪽이 상위다', () => {
+    for (const key of ['p_l', 'p_h', 'p_bb']) {
       const category = categoryByKey(key);
       expect(category.lowerIsBetter).toBe(true);
       const result = scoreCategory(
