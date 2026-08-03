@@ -145,6 +145,199 @@ header {
   color: var(--warn-text);
 }
 
+.section-title {
+  margin: 22px 0 10px;
+  font-size: 15px;
+  color: var(--text-h);
+}
+
+.field {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+/* --- 리그 설정 --- */
+
+.big-count {
+  font-size: 40px;
+  font-weight: 600;
+  color: var(--text-h);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.big-count .unit {
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--text-dim);
+  margin-left: 4px;
+}
+
+.manager-list {
+  list-style: none;
+  counter-reset: manager;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+}
+
+.manager-list li {
+  counter-increment: manager;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.manager-list li::before {
+  content: counter(manager);
+  min-width: 20px;
+  font-size: 12px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.manager-list li:last-child {
+  border-bottom: none;
+}
+
+.manager-list .manager-name {
+  flex: 1;
+  color: var(--text-h);
+}
+
+.manager-actions {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.danger-link:hover {
+  color: var(--error-text);
+}
+
+.rules {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* --- 드래프트 로스터 --- */
+
+.chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chips li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  font-size: 13px;
+}
+
+.chip-name {
+  color: var(--text-h);
+}
+
+.chip-team,
+.chip-role {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.chip-remove {
+  border: none;
+  background: none;
+  padding: 0 4px;
+  line-height: 1;
+  font-size: 15px;
+  color: var(--text-dim);
+  border-radius: 999px;
+}
+
+.chip-remove:hover {
+  color: var(--error-text);
+}
+
+/* --- 월 선택 --- */
+
+.view-switch,
+.month-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.view-switch {
+  margin-bottom: 14px;
+}
+
+.view-switch button,
+.month-picker button {
+  position: relative;
+  font-size: 13px;
+  padding: 5px 12px;
+}
+
+.view-switch button.active,
+.month-picker button.active {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* 기록이 들어온 달 표식 */
+.filled-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 5px;
+  border-radius: 50%;
+  background: var(--ok);
+  vertical-align: middle;
+}
+
+/* 기록이 없는 달은 흐리게 */
+.view-switch button:has(.no-data) {
+  opacity: 0.55;
+}
+
+.month-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.month-title .updated {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-dim);
+}
+
 /* --- 순위표 --- */
 
 .table-scroll {

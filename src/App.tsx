@@ -1,17 +1,20 @@
 import { useState } from 'react';
+import { DraftPanel } from './components/DraftPanel';
 import { ImportPanel } from './components/ImportPanel';
-import { ManagersPanel } from './components/ManagersPanel';
-import { StandingsTable } from './components/StandingsTable';
+import { LeagueSetupPanel } from './components/LeagueSetupPanel';
+import { StandingsPanel } from './components/StandingsPanel';
+import { scoredMonthKeys } from './domain/season';
 import { useLeague } from './useLeague';
 import './App.css';
 
 const SEASON = 2026;
 
-type Tab = 'standings' | 'managers' | 'import';
+type Tab = 'standings' | 'setup' | 'draft' | 'import';
 
 const TABS: Array<{ key: Tab; label: string }> = [
   { key: 'standings', label: '순위표' },
-  { key: 'managers', label: '참가자 · 로스터' },
+  { key: 'setup', label: '리그 설정' },
+  { key: 'draft', label: '드래프트 결과' },
   { key: 'import', label: '스탯 불러오기' },
 ];
 
@@ -19,13 +22,16 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('standings');
   const { snapshot, storageLabel, loading, saving, error, update } = useLeague(SEASON);
 
+  const scoredMonths = scoredMonthKeys(snapshot);
+
   return (
     <div className="app">
       <header>
         <div>
           <h1>KBO 판타지 리그</h1>
           <p className="subtitle">
-            {SEASON} 시즌 · 로토서리 누적 점수제 · 참가자 {snapshot.managers.length}명
+            {SEASON} 시즌 · 월별 로토서리 · 참가자 {snapshot.managers.length}명 · 기록{' '}
+            {scoredMonths.length}개월
           </p>
         </div>
         <div className="status">
@@ -53,9 +59,11 @@ export default function App() {
         {loading ? (
           <p className="empty">불러오는 중…</p>
         ) : tab === 'standings' ? (
-          <StandingsTable snapshot={snapshot} />
-        ) : tab === 'managers' ? (
-          <ManagersPanel snapshot={snapshot} update={update} />
+          <StandingsPanel snapshot={snapshot} />
+        ) : tab === 'setup' ? (
+          <LeagueSetupPanel snapshot={snapshot} update={update} />
+        ) : tab === 'draft' ? (
+          <DraftPanel snapshot={snapshot} update={update} />
         ) : (
           <ImportPanel snapshot={snapshot} update={update} />
         )}

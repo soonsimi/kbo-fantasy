@@ -1,8 +1,12 @@
 /**
  * 판타지 리그 도메인 타입.
  *
- * 설계 원칙: 저장하는 것은 "누적 원시 스탯"뿐이다.
+ * 설계 원칙 1: 저장하는 것은 "누적 원시 스탯"뿐이다.
  * 부문 값은 팀 합계에서 매번 계산한다 (categories.ts).
+ *
+ * 설계 원칙 2: 스탯은 **월별로** 저장한다.
+ * 순위 산정이 월 단위이고 시즌 총 순위가 월별 순위의 합산이므로,
+ * 시즌 누적만 갖고 있으면 월별 순위를 되돌려 계산할 수 없다.
  *
  * 현재 부문 구성은 전부 누적 카운팅 스탯이라 팀 값은 단순 합이다.
  * 나중에 타율·평균자책점처럼 비율 부문을 넣을 때는 분모(AB, IP)까지 합산한 뒤
@@ -12,6 +16,9 @@
 
 export type PlayerId = string;
 export type ManagerId = string;
+
+/** 'YYYY-MM' 형식의 월 식별자 */
+export type MonthKey = string;
 
 export type PlayerRole = 'hitter' | 'pitcher';
 
@@ -74,10 +81,36 @@ export interface Manager {
   name: string;
 }
 
-/** 드래프트 결과 = 참가자별 보유 선수 목록 */
+/** 오프라인 드래프트 결과 = 참가자별 보유 선수 목록 */
 export interface Roster {
   managerId: ManagerId;
   playerIds: PlayerId[];
+}
+
+/** 한 달치 기록 */
+export interface MonthlyStats {
+  hitting: Record<PlayerId, HittingLine>;
+  pitching: Record<PlayerId, PitchingLine>;
+  /**
+   * 이 달에 임포트로 채운 스탯 필드.
+   *
+   * 값이 0인 것과 아직 안 넣은 것을 구별하기 위해 필요하다.
+   * 안 넣은 부문은 전원 0이 되어 그 달 순위가 무의미해진다.
+   */
+  importedFields: {
+    hitting: HittingField[];
+    pitching: PitchingField[];
+  };
+  updatedAt: string | null;
+}
+
+export function emptyMonth(): MonthlyStats {
+  return {
+    hitting: {},
+    pitching: {},
+    importedFields: { hitting: [], pitching: [] },
+    updatedAt: null,
+  };
 }
 
 /**
@@ -87,36 +120,20 @@ export interface Roster {
  */
 export interface LeagueSnapshot {
   season: number;
-  /** 스탯을 마지막으로 갱신한 시각 (ISO 8601) */
-  statsUpdatedAt: string | null;
   managers: Manager[];
   rosters: Roster[];
   players: Record<PlayerId, Player>;
-  hitting: Record<PlayerId, HittingLine>;
-  pitching: Record<PlayerId, PitchingLine>;
-  /**
-   * 지금까지 임포트로 채운 스탯 필드.
-   *
-   * 필요한 항목이 여러 페이지에 나뉘어 있어 표를 여러 번 넣어야 하는데,
-   * 값이 0인 것과 아직 안 넣은 것을 구별할 방법이 없으면
-   * "GDP를 넣었는지" 를 화면에서 알려줄 수 없다.
-   */
-  importedFields: {
-    hitting: HittingField[];
-    pitching: PitchingField[];
-  };
+  /** 월별 기록. 키는 'YYYY-MM' */
+  months: Record<MonthKey, MonthlyStats>;
 }
 
 export function emptySnapshot(season: number): LeagueSnapshot {
   return {
     season,
-    statsUpdatedAt: null,
     managers: [],
     rosters: [],
     players: {},
-    hitting: {},
-    pitching: {},
-    importedFields: { hitting: [], pitching: [] },
+    months: {},
   };
 }
 
@@ -149,3 +166,24 @@ export const HITTING_FIELDS: readonly HittingField[] = Object.keys(
 export const PITCHING_FIELDS: readonly PitchingField[] = Object.keys(
   EMPTY_PITCHING,
 ) as PitchingField[];
+
+/** KBO 정규시즌이 걸쳐 있는 달 (3월 말 개막 ~ 10월 초 종료) */
+export const SEASON_MONTHS: readonly number[] = [3, 4, 5, 6, 7, 8, 9, 10];
+
+export function monthKey(season: number, month: number): MonthKey {
+  return `${season}-${String(month).padStart(2, '0')}`;
+}
+
+/** 'YYYY-MM' → 4 */
+export function monthNumber(key: MonthKey): number {
+  return Number(key.slice(5, 7));
+}
+
+export function monthLabel(key: MonthKey): string {
+  return `${monthNumber(key)}월`;
+}
+
+/** 시즌의 모든 월 키를 시간 순으로 */
+export function seasonMonthKeys(season: number): MonthKey[] {
+  return SEASON_MONTHS.map((m) => monthKey(season, m));
+}

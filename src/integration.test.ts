@@ -1,157 +1,291 @@
 /**
- * 통합 테스트: 여러 표 붙여넣기 → 로스터 구성 → 로토서리 순위표.
+ * 통합 테스트: 월별 표 붙여넣기 → 드래프트 결과 입력 → 월별/시즌 순위.
  *
- * 화면 없이 실제 파이프라인을 그대로 통과시켜, 항목이 여러 페이지에 나뉘어 있어도
- * 순위 계산까지 올바르게 연결되는지 확인한다.
+ * 화면 없이 실제 파이프라인을 그대로 통과시켜, 항목이 여러 페이지에 나뉘어 있고
+ * 기록이 달마다 따로 들어와도 순위 계산까지 올바르게 연결되는지 확인한다.
  */
 
 import { describe, expect, it } from 'vitest';
-import { computeStandings } from './domain/rotisserie';
-import { emptySnapshot } from './domain/types';
-import type { LeagueSnapshot, PlayerRole } from './domain/types';
+import { computeMonth, computeSeason } from './domain/season';
+import { emptySnapshot, monthKey } from './domain/types';
+import type { LeagueSnapshot, MonthKey, PlayerRole } from './domain/types';
 import { applyImport } from './import/applyImport';
+import type { ImportMode } from './import/applyImport';
+import { parseDraft } from './import/parseDraft';
 import { parseStatTable } from './import/parseStatTable';
 
 const NOW = '2026-08-01T00:00:00.000Z';
+const SEASON = 2026;
+const APRIL = monthKey(SEASON, 4);
+const MAY = monthKey(SEASON, 5);
 
-const HITTER_BASIC1 = [
-  '순위\t선수명\t팀명\tG\tAB\tR\tH\tHR\tRBI\tSB',
-  '1\t김도영\tKIA\t141\t544\t143\t189\t38\t109\t40',
-  '2\t구자욱\t삼성\t129\t484\t92\t166\t33\t115\t13',
-  '3\t레이예스\t롯데\t144\t574\t89\t202\t15\t111\t3',
-  '4\t오스틴\tLG\t140\t546\t99\t174\t32\t132\t15',
+/** 4월 타자 기본기록1 */
+const APRIL_HITTERS_1 = [
+  '순위\t선수명\t팀명\tAB\tR\tH\tHR\tRBI\tSB',
+  '1\t김도영\tKIA\t95\t25\t34\t9\t22\t8',
+  '2\t구자욱\t삼성\t92\t18\t30\t6\t20\t3',
+  '3\t레이예스\t롯데\t98\t14\t33\t2\t18\t1',
+  '4\t오스틴\tLG\t96\t17\t29\t5\t23\t2',
 ].join('\n');
 
-const HITTER_BASIC2 = [
+/** 4월 타자 기본기록2 */
+const APRIL_HITTERS_2 = [
   '순위\t선수명\t팀명\tBB\tIBB\tSO\tGDP',
-  '1\t김도영\tKIA\t66\t2\t97\t7',
-  '2\t구자욱\t삼성\t58\t3\t70\t11',
-  '3\t레이예스\t롯데\t39\t1\t76\t18',
-  '4\t오스틴\tLG\t53\t4\t102\t14',
+  '1\t김도영\tKIA\t12\t0\t17\t1',
+  '2\t구자욱\t삼성\t10\t1\t12\t2',
+  '3\t레이예스\t롯데\t7\t0\t13\t4',
+  '4\t오스틴\tLG\t9\t1\t19\t3',
 ].join('\n');
 
-const PITCHERS = [
-  '순위\t선수명\t팀명\tG\tW\tL\tSV\tHLD\tIP\tH\tBB\tSO',
-  '1\t원태인\t삼성\t28\t15\t6\t0\t0\t159 2/3\t160\t43\t119',
-  '2\t네일\tKIA\t26\t12\t5\t0\t0\t149 1/3\t128\t35\t122',
+/** 4월 투수 */
+const APRIL_PITCHERS = [
+  '순위\t선수명\t팀명\tW\tL\tSV\tHLD\tIP\tH\tBB\tSO',
+  '1\t원태인\t삼성\t3\t1\t0\t0\t30 1/3\t28\t8\t25',
+  '2\t네일\tKIA\t2\t2\t0\t0\t28 2/3\t25\t6\t27',
 ].join('\n');
 
-function importTable(snapshot: LeagueSnapshot, text: string, role: PlayerRole): LeagueSnapshot {
-  const result = parseStatTable(text, role);
-  expect(result.fatal).toBeNull();
-  return applyImport(snapshot, result, { now: NOW });
+/** 5월 타자 (4월과 순서를 뒤집어 월별 순위가 달라지게) */
+const MAY_HITTERS_1 = [
+  '순위\t선수명\t팀명\tR\tH\tHR\tRBI\tSB',
+  '1\t레이예스\t롯데\t28\t40\t8\t30\t2',
+  '2\t오스틴\tLG\t26\t38\t7\t28\t4',
+  '3\t구자욱\t삼성\t15\t26\t3\t16\t1',
+  '4\t김도영\tKIA\t12\t22\t2\t14\t3',
+].join('\n');
+
+const MAY_HITTERS_2 = [
+  '순위\t선수명\t팀명\tBB\tSO\tGDP',
+  '1\t레이예스\t롯데\t14\t10\t1',
+  '2\t오스틴\tLG\t12\t14\t2',
+  '3\t구자욱\t삼성\t8\t16\t4',
+  '4\t김도영\tKIA\t6\t21\t5',
+].join('\n');
+
+function importTable(
+  snapshot: LeagueSnapshot,
+  text: string,
+  role: PlayerRole,
+  month: MonthKey,
+  mode: ImportMode = 'monthly',
+): LeagueSnapshot {
+  const parsed = parseStatTable(text, role);
+  expect(parsed.fatal).toBeNull();
+  const outcome = applyImport(snapshot, parsed, { month, mode, now: NOW });
+  expect(outcome.warnings).toEqual([]);
+  return outcome.snapshot;
 }
 
-describe('부분 임포트 → 순위표 통합', () => {
-  it('두 페이지를 이어 넣으면 타자 8부문이 모두 채워진다', () => {
-    let snapshot = emptySnapshot(2026);
+function leagueWithTwoManagers(): LeagueSnapshot {
+  const snapshot = emptySnapshot(SEASON);
+  snapshot.managers = [
+    { id: 'm1', name: '홍길동' },
+    { id: 'm2', name: '이몽룡' },
+  ];
+  return snapshot;
+}
 
-    snapshot = importTable(snapshot, HITTER_BASIC1, 'hitter');
-    expect(snapshot.importedFields.hitting.sort()).toEqual(['h', 'hr', 'r', 'rbi', 'sb'].sort());
-    // 아직 BB·SO·GDP는 0
-    expect(snapshot.hitting['김도영'].bb).toBe(0);
-    expect(snapshot.hitting['김도영'].hr).toBe(38);
+describe('월별 부분 임포트', () => {
+  it('두 페이지를 이어 넣으면 그 달 타자 8항목이 채워진다', () => {
+    let snapshot = leagueWithTwoManagers();
 
-    snapshot = importTable(snapshot, HITTER_BASIC2, 'hitter');
-    expect(snapshot.importedFields.hitting.sort()).toEqual(
+    snapshot = importTable(snapshot, APRIL_HITTERS_1, 'hitter', APRIL);
+    expect(snapshot.months[APRIL].importedFields.hitting.sort()).toEqual(
+      ['h', 'hr', 'r', 'rbi', 'sb'].sort(),
+    );
+    expect(snapshot.months[APRIL].hitting['김도영'].bb).toBe(0);
+
+    snapshot = importTable(snapshot, APRIL_HITTERS_2, 'hitter', APRIL);
+    expect(snapshot.months[APRIL].importedFields.hitting.sort()).toEqual(
       ['bb', 'gdp', 'h', 'hr', 'r', 'rbi', 'sb', 'so'].sort(),
     );
 
-    // 1번 표의 값이 2번 표 반영으로 지워지지 않았는지
-    expect(snapshot.hitting['김도영']).toEqual({
-      r: 143,
-      h: 189,
-      hr: 38,
-      rbi: 109,
-      sb: 40,
-      bb: 66,
-      so: 97,
-      gdp: 7,
+    // 1번 표 값이 2번 표 반영으로 지워지지 않았는지
+    expect(snapshot.months[APRIL].hitting['김도영']).toEqual({
+      r: 25,
+      h: 34,
+      hr: 9,
+      rbi: 22,
+      sb: 8,
+      bb: 12,
+      so: 17,
+      gdp: 1,
     });
   });
 
-  it('붙여넣은 표로 로토서리 순위가 계산된다', () => {
-    let snapshot = emptySnapshot(2026);
-    snapshot = importTable(snapshot, HITTER_BASIC1, 'hitter');
-    snapshot = importTable(snapshot, HITTER_BASIC2, 'hitter');
-    snapshot = importTable(snapshot, PITCHERS, 'pitcher');
+  it('달마다 기록이 독립적으로 저장된다', () => {
+    let snapshot = leagueWithTwoManagers();
+    snapshot = importTable(snapshot, APRIL_HITTERS_1, 'hitter', APRIL);
+    snapshot = importTable(snapshot, MAY_HITTERS_1, 'hitter', MAY);
 
-    expect(Object.keys(snapshot.players)).toHaveLength(6);
+    expect(snapshot.months[APRIL].hitting['김도영'].hr).toBe(9);
+    expect(snapshot.months[MAY].hitting['김도영'].hr).toBe(2);
+    expect(Object.keys(snapshot.months).sort()).toEqual([APRIL, MAY]);
+  });
 
-    snapshot.managers = [
-      { id: 'm1', name: '참가자1' },
-      { id: 'm2', name: '참가자2' },
-    ];
+  it('누적 모드는 이전 달 합을 빼서 그 달 값을 만든다', () => {
+    let snapshot = leagueWithTwoManagers();
+    // 4월: 김도영 9홈런
+    snapshot = importTable(snapshot, APRIL_HITTERS_1, 'hitter', APRIL);
+
+    // 5월까지 누적 11홈런을 넣으면 5월은 2홈런이 되어야 한다
+    const cumulative = [
+      '순위\t선수명\t팀명\tR\tH\tHR\tRBI\tSB',
+      '1\t김도영\tKIA\t37\t56\t11\t36\t11',
+    ].join('\n');
+
+    snapshot = importTable(snapshot, cumulative, 'hitter', MAY, 'cumulative');
+
+    expect(snapshot.months[MAY].hitting['김도영'].hr).toBe(11 - 9);
+    expect(snapshot.months[MAY].hitting['김도영'].r).toBe(37 - 25);
+    expect(snapshot.months[MAY].hitting['김도영'].h).toBe(56 - 34);
+    // 4월은 그대로
+    expect(snapshot.months[APRIL].hitting['김도영'].hr).toBe(9);
+  });
+
+  it('누적값이 이전 달 합보다 작으면 0으로 처리하고 경고한다', () => {
+    let snapshot = leagueWithTwoManagers();
+    snapshot = importTable(snapshot, APRIL_HITTERS_1, 'hitter', APRIL);
+
+    // 4월에 이미 9홈런인데 누적 5홈런이 들어오면 모순이다
+    const bad = ['선수명\tR\tH\tHR\tRBI\tSB', '김도영\t30\t40\t5\t30\t9'].join('\n');
+    const parsed = parseStatTable(bad, 'hitter');
+    const outcome = applyImport(snapshot, parsed, { month: MAY, mode: 'cumulative', now: NOW });
+
+    expect(outcome.warnings.join(' ')).toMatch(/누적값이 이전 달 합보다 작습니다/);
+    expect(outcome.snapshot.months[MAY].hitting['김도영'].hr).toBe(0);
+  });
+
+  it('교체 옵션은 그 달, 그 역할만 초기화한다', () => {
+    let snapshot = leagueWithTwoManagers();
+    snapshot = importTable(snapshot, APRIL_HITTERS_1, 'hitter', APRIL);
+    snapshot = importTable(snapshot, APRIL_HITTERS_2, 'hitter', APRIL);
+    snapshot = importTable(snapshot, APRIL_PITCHERS, 'pitcher', APRIL);
+    snapshot = importTable(snapshot, MAY_HITTERS_1, 'hitter', MAY);
+
+    const parsed = parseStatTable(APRIL_HITTERS_1, 'hitter');
+    snapshot = applyImport(snapshot, parsed, {
+      month: APRIL,
+      replaceExisting: true,
+      now: NOW,
+    }).snapshot;
+
+    // 4월 타자는 1번 표 항목만 남는다
+    expect(snapshot.months[APRIL].importedFields.hitting.sort()).toEqual(
+      ['h', 'hr', 'r', 'rbi', 'sb'].sort(),
+    );
+    expect(snapshot.months[APRIL].hitting['김도영'].bb).toBe(0);
+    // 4월 투수는 그대로
+    expect(snapshot.months[APRIL].pitching['원태인'].w).toBe(3);
+    // 5월 타자는 그대로
+    expect(snapshot.months[MAY].hitting['김도영'].hr).toBe(2);
+  });
+});
+
+describe('드래프트 결과 입력 → 월별/시즌 순위', () => {
+  function fullLeague(): LeagueSnapshot {
+    let snapshot = leagueWithTwoManagers();
+    snapshot = importTable(snapshot, APRIL_HITTERS_1, 'hitter', APRIL);
+    snapshot = importTable(snapshot, APRIL_HITTERS_2, 'hitter', APRIL);
+    snapshot = importTable(snapshot, APRIL_PITCHERS, 'pitcher', APRIL);
+    snapshot = importTable(snapshot, MAY_HITTERS_1, 'hitter', MAY);
+    snapshot = importTable(snapshot, MAY_HITTERS_2, 'hitter', MAY);
+
+    // 오프라인 드래프트 결과를 일괄 입력
+    const draft = parseDraft(
+      ['홍길동: 김도영, 구자욱, 원태인', '이몽룡: 레이예스, 오스틴, 네일'].join('\n'),
+      snapshot.managers,
+      snapshot.players,
+    );
+    expect(draft.conflicts).toEqual([]);
+    expect(draft.unknownPlayers).toEqual([]);
+    snapshot.rosters = draft.assignments.map((a) => ({
+      managerId: a.managerId,
+      playerIds: a.playerIds,
+    }));
+
+    return snapshot;
+  }
+
+  it('4월은 홍길동이 타격에서 앞선다', () => {
+    const snapshot = fullLeague();
+    const april = computeMonth(snapshot, APRIL);
+
+    const hong = april.rows.find((r) => r.managerId === 'm1')!;
+    const lee = april.rows.find((r) => r.managerId === 'm2')!;
+
+    // 홈런: 홍길동 9+6=15, 이몽룡 2+5=7
+    expect(hong.cells.b_hr.value).toBe(15);
+    expect(lee.cells.b_hr.value).toBe(7);
+    expect(hong.cells.b_hr.points).toBe(2);
+
+    // 삼진(마이너스): 홍길동 17+12=29, 이몽룡 13+19=32 → 적은 홍길동이 상위
+    expect(hong.cells.b_so.value).toBe(29);
+    expect(lee.cells.b_so.value).toBe(32);
+    expect(hong.cells.b_so.points).toBe(2);
+
+    // 투수 피안타(마이너스): 원태인 28, 네일 25 → 적은 이몽룡이 상위
+    expect(hong.cells.p_h.value).toBe(28);
+    expect(lee.cells.p_h.value).toBe(25);
+    expect(lee.cells.p_h.points).toBe(2);
+
+    // 이닝 분수 표기가 소수로 정규화되어 합산되는지
+    expect(hong.cells.p_ip.value).toBeCloseTo(30 + 1 / 3, 8);
+  });
+
+  it('5월은 이몽룡이 앞선다 (달마다 순위가 다르다)', () => {
+    const snapshot = fullLeague();
+    const may = computeMonth(snapshot, MAY);
+
+    const hong = may.rows.find((r) => r.managerId === 'm1')!;
+    const lee = may.rows.find((r) => r.managerId === 'm2')!;
+
+    // 홈런: 홍길동 2+3=5, 이몽룡 8+7=15
+    expect(lee.cells.b_hr.value).toBe(15);
+    expect(lee.cells.b_hr.points).toBe(2);
+    expect(lee.totalPoints).toBeGreaterThan(hong.totalPoints);
+  });
+
+  it('시즌 종합은 월별 순위의 합산이다', () => {
+    const snapshot = fullLeague();
+    const season = computeSeason(snapshot);
+
+    expect(season.scoredMonths).toEqual([APRIL, MAY]);
+
+    const hong = season.rows.find((r) => r.managerId === 'm1')!;
+    const lee = season.rows.find((r) => r.managerId === 'm2')!;
+
+    // 4월 1위 / 5월 2위 → 합 3. 반대쪽도 합 3.
+    expect(hong.monthlyRanks[APRIL]).toBe(1);
+    expect(hong.monthlyRanks[MAY]).toBe(2);
+    expect(lee.monthlyRanks[APRIL]).toBe(2);
+    expect(lee.monthlyRanks[MAY]).toBe(1);
+
+    expect(hong.rankSum).toBe(3);
+    expect(lee.rankSum).toBe(3);
+    // 순위 합이 같으므로 공동 1위
+    expect(hong.rank).toBe(1);
+    expect(lee.rank).toBe(1);
+
+    // 월별 총점 합계도 기록된다 (참고용)
+    expect(hong.pointsSum).toBeCloseTo(
+      hong.monthlyPoints[APRIL] + hong.monthlyPoints[MAY],
+      10,
+    );
+  });
+
+  it('한 달만 있으면 그 달 순위가 곧 종합 순위다', () => {
+    let snapshot = leagueWithTwoManagers();
+    snapshot = importTable(snapshot, APRIL_HITTERS_1, 'hitter', APRIL);
+    snapshot = importTable(snapshot, APRIL_HITTERS_2, 'hitter', APRIL);
     snapshot.rosters = [
-      { managerId: 'm1', playerIds: ['김도영', '구자욱', '원태인'] },
-      { managerId: 'm2', playerIds: ['레이예스', '오스틴', '네일'] },
+      { managerId: 'm1', playerIds: ['김도영', '구자욱'] },
+      { managerId: 'm2', playerIds: ['레이예스', '오스틴'] },
     ];
 
-    const standings = computeStandings(snapshot);
-    expect(standings.maxPointsPerCategory).toBe(2);
+    const april = computeMonth(snapshot, APRIL);
+    const season = computeSeason(snapshot);
 
-    const m1 = standings.rows.find((r) => r.managerId === 'm1')!;
-    const m2 = standings.rows.find((r) => r.managerId === 'm2')!;
-
-    // 홈런: m1 = 38 + 33 = 71, m2 = 15 + 32 = 47 → m1 승
-    expect(m1.cells.b_hr.value).toBe(71);
-    expect(m2.cells.b_hr.value).toBe(47);
-    expect(m1.cells.b_hr.points).toBe(2);
-
-    // 삼진(마이너스): m1 = 97 + 70 = 167, m2 = 76 + 102 = 178 → 적은 m1이 상위
-    expect(m1.cells.b_so.value).toBe(167);
-    expect(m2.cells.b_so.value).toBe(178);
-    expect(m1.cells.b_so.points).toBe(2);
-    expect(m2.cells.b_so.points).toBe(1);
-
-    // 병살타(마이너스): m1 = 7 + 11 = 18, m2 = 18 + 14 = 32 → m1이 상위
-    expect(m1.cells.b_gdp.value).toBe(18);
-    expect(m1.cells.b_gdp.points).toBe(2);
-
-    // 패전(마이너스): m1 원태인 6패, m2 네일 5패 → m2가 상위
-    expect(m1.cells.p_l.value).toBe(6);
-    expect(m2.cells.p_l.value).toBe(5);
-    expect(m2.cells.p_l.points).toBe(2);
-
-    // 투수 볼넷(마이너스): m1 43, m2 35 → m2가 상위
-    expect(m2.cells.p_bb.points).toBe(2);
-
-    // 투수 피안타(마이너스): m1 원태인 160, m2 네일 128 → 적은 m2가 상위
-    expect(m1.cells.p_h.value).toBe(160);
-    expect(m2.cells.p_h.value).toBe(128);
-    expect(m2.cells.p_h.points).toBe(2);
-    expect(m1.cells.p_h.points).toBe(1);
-
-    // 이닝 합산 (분수 표기가 소수로 정규화되어 있어야 한다)
-    expect(m1.cells.p_ip.value).toBeCloseTo(159 + 2 / 3, 8);
-
-    // 리그 총점은 부문수 15 × N(N+1)/2 = 15 × 3 = 45
-    expect(m1.totalPoints + m2.totalPoints).toBeCloseTo(45, 10);
-  });
-
-  it('같은 표를 다시 넣으면 스탯이 두 배가 되지 않고 갱신된다', () => {
-    let snapshot = emptySnapshot(2026);
-    snapshot = importTable(snapshot, HITTER_BASIC1, 'hitter');
-    const before = snapshot.hitting['김도영'].hr;
-
-    snapshot = importTable(snapshot, HITTER_BASIC1, 'hitter');
-    expect(snapshot.hitting['김도영'].hr).toBe(before);
-  });
-
-  it('교체 옵션은 해당 역할의 스탯과 채운 항목 기록을 함께 초기화한다', () => {
-    let snapshot = emptySnapshot(2026);
-    snapshot = importTable(snapshot, HITTER_BASIC1, 'hitter');
-    snapshot = importTable(snapshot, HITTER_BASIC2, 'hitter');
-    snapshot = importTable(snapshot, PITCHERS, 'pitcher');
-
-    const result = parseStatTable(HITTER_BASIC1, 'hitter');
-    snapshot = applyImport(snapshot, result, { replaceExisting: true, now: NOW });
-
-    // 타자는 1번 표 항목만 남는다
-    expect(snapshot.importedFields.hitting.sort()).toEqual(['h', 'hr', 'r', 'rbi', 'sb'].sort());
-    expect(snapshot.hitting['김도영'].bb).toBe(0);
-    // 투수 쪽은 영향 없다
-    expect(snapshot.importedFields.pitching.length).toBe(8);
-    expect(snapshot.pitching['원태인'].w).toBe(15);
+    expect(season.rows[0].managerId).toBe(april.rows[0].managerId);
+    expect(season.rows[0].rankSum).toBe(1);
   });
 });

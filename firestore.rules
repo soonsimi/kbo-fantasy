@@ -24,7 +24,8 @@ service cloud.firestore {
                    && request.resource.data.season is int
                    && request.resource.data.managers is list
                    && request.resource.data.rosters is list
-                   && request.resource.data.players is list;
+                   && request.resource.data.players is list
+                   && request.resource.data.months is map;
     }
 
     // 그 외 경로는 전부 차단

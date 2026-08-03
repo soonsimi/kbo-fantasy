@@ -1,36 +1,23 @@
-import { useMemo } from 'react';
 import { DEFAULT_CATEGORIES } from '../domain/categories';
-import { computeStandings } from '../domain/rotisserie';
-import type { LeagueSnapshot } from '../domain/types';
-
-function formatPoints(points: number): string {
-  return Number.isInteger(points) ? String(points) : points.toFixed(1);
-}
+import type { Standings } from '../domain/rotisserie';
+import { formatPoints } from './format';
 
 interface Props {
-  snapshot: LeagueSnapshot;
+  standings: Standings;
 }
 
-export function StandingsTable({ snapshot }: Props) {
-  const standings = useMemo(() => computeStandings(snapshot), [snapshot]);
-
-  if (standings.rows.length === 0) {
-    return (
-      <p className="empty">
-        참가자가 없습니다. <strong>참가자 · 로스터</strong> 탭에서 먼저 참가자를 등록하세요.
-      </p>
-    );
-  }
-
+/** 한 달의 부문별 순위표 */
+export function MonthlyTable({ standings }: Props) {
   const hittingCats = DEFAULT_CATEGORIES.filter((c) => c.group === 'hitting');
   const pitchingCats = DEFAULT_CATEGORIES.filter((c) => c.group === 'pitching');
+  const orderedCats = [...hittingCats, ...pitchingCats];
   const maxTotal = DEFAULT_CATEGORIES.length * standings.maxPointsPerCategory;
 
   return (
-    <div className="standings">
+    <>
       <p className="hint">
-        부문마다 1위 {standings.maxPointsPerCategory}점 ~ 최하위 1점. 동점은 균등 배분.
-        만점은 {maxTotal}점입니다.
+        부문마다 1위 {standings.maxPointsPerCategory}점 ~ 최하위 1점. 동점은 균등 배분. 이 달 만점은{' '}
+        {maxTotal}점입니다.
       </p>
 
       <div className="table-scroll">
@@ -46,18 +33,18 @@ export function StandingsTable({ snapshot }: Props) {
               <th rowSpan={2} className="col-total">
                 총점
               </th>
-              <th colSpan={hittingCats.length} className="group-head hitting">
-                타격
+              <th colSpan={hittingCats.length} className="group-head">
+                타자
               </th>
-              <th colSpan={pitchingCats.length} className="group-head pitching">
-                투구
+              <th colSpan={pitchingCats.length} className="group-head">
+                투수
               </th>
             </tr>
             <tr>
-              {[...hittingCats, ...pitchingCats].map((c) => (
+              {orderedCats.map((c) => (
                 <th key={c.key} title={c.description} className="col-cat">
                   {c.label}
-                  {c.lowerIsBetter && <span className="lower-mark">↓</span>}
+                  {c.lowerIsBetter && <span className="lower-mark">−</span>}
                 </th>
               ))}
             </tr>
@@ -68,7 +55,7 @@ export function StandingsTable({ snapshot }: Props) {
                 <td className="col-rank">{row.rank}</td>
                 <td className="col-manager">{row.managerName}</td>
                 <td className="col-total">{formatPoints(row.totalPoints)}</td>
-                {[...hittingCats, ...pitchingCats].map((c) => {
+                {orderedCats.map((c) => {
                   const cell = row.cells[c.key];
                   const isTop = cell && cell.rank === 1;
                   return (
@@ -87,8 +74,8 @@ export function StandingsTable({ snapshot }: Props) {
       </div>
 
       <p className="legend">
-        각 칸의 위쪽은 부문 성적, 아래쪽은 그 부문에서 받은 점수입니다. ↓ 는 낮을수록 좋은 부문.
+        각 칸의 위쪽은 부문 성적, 아래쪽은 그 부문에서 받은 점수입니다. − 는 적을수록 상위인 부문.
       </p>
-    </div>
+    </>
   );
 }
