@@ -64,6 +64,7 @@ export function StandingsPanel({ snapshot }: Props) {
           <>
             <p className="hint">
               시즌 종합 순위는 <strong>월별 순위의 합산</strong>입니다. 합이 작을수록 상위.
+              순위 합이 같으면 <strong>총점 합계가 높은 쪽</strong>이 상위입니다.
               <br />
               산정에 포함된 달: {season.scoredMonths.map(monthLabel).join(', ')} (
               {season.scoredMonths.length}개월)
@@ -114,7 +115,7 @@ export function StandingsPanel({ snapshot }: Props) {
 
             <p className="legend">
               각 월 칸의 위쪽은 그 달 순위, 아래쪽은 그 달 로토서리 총점입니다. 종합 순위는 위쪽
-              값들의 합으로만 정합니다. 총점 합은 참고용입니다.
+              값들의 합(순위 합)으로 정하고, 그 값이 같을 때만 총점 합으로 가릅니다.
             </p>
           </>
         )

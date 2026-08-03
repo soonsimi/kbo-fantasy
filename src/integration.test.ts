@@ -262,7 +262,8 @@ describe('드래프트 결과 입력 → 월별/시즌 순위', () => {
 
     expect(hong.rankSum).toBe(3);
     expect(lee.rankSum).toBe(3);
-    // 순위 합이 같으므로 공동 1위
+    // 순위 합이 같으면 총점 합계로 가른다. 여기서는 총점도 같아 공동 1위.
+    expect(hong.pointsSum).toBeCloseTo(lee.pointsSum, 10);
     expect(hong.rank).toBe(1);
     expect(lee.rank).toBe(1);
 

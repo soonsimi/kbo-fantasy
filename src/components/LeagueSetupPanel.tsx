@@ -185,6 +185,7 @@ export function LeagueSetupPanel({ snapshot, update }: Props) {
           <li>
             시즌 종합 순위는 <strong>월별 순위의 합산</strong>이다. 합이 작을수록 상위.
           </li>
+          <li>순위 합이 같으면 월별 총점 합계가 높은 쪽이 상위다.</li>
           <li>기록이 없는 달은 산정에서 제외한다.</li>
         </ul>
       </section>

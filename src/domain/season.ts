@@ -5,7 +5,9 @@
  *  1. 각 달의 기록으로 로토서리 점수를 매겨 그 달의 순위를 낸다.
  *  2. 시즌 종합 순위는 **월별 순위의 합산**이다. 합이 작을수록 상위.
  *     예) 4월 3위 + 5월 1위 + 6월 2위 = 6점. 다른 참가자가 5점이면 그 쪽이 상위.
- *  3. 기록이 없는 달은 계산에서 제외한다 (전원 0점 동점이 되어 무의미하므로).
+ *  3. 순위 합이 같으면 **월별 총점 합계가 높은 쪽**이 상위다.
+ *     둘 다 같을 때만 공동 순위가 된다.
+ *  4. 기록이 없는 달은 계산에서 제외한다 (전원 0점 동점이 되어 무의미하므로).
  *
  * 월 순위 합산은 인원수가 그대로 유지될 때만 달끼리 공평하다.
  * 시즌 중 인원이 바뀌면 달마다 순위 범위가 달라져 합산이 왜곡된다.
@@ -33,7 +35,7 @@ export interface SeasonRow {
   monthlyPoints: Record<MonthKey, number>;
   /** 월별 순위의 합. 작을수록 상위. */
   rankSum: number;
-  /** 월별 총점의 합 (참고용) */
+  /** 월별 총점의 합. 순위 합이 같을 때 높은 쪽이 상위. */
   pointsSum: number;
   /** 시즌 종합 순위 */
   rank: number;
@@ -113,13 +115,18 @@ export function computeSeason(
     };
   });
 
-  // 월 순위 합이 작은 쪽이 상위
-  unranked.sort((a, b) => a.rankSum - b.rankSum);
+  // 월 순위 합이 작은 쪽이 상위, 같으면 월별 총점 합계가 높은 쪽이 상위
+  unranked.sort((a, b) => a.rankSum - b.rankSum || b.pointsSum - a.pointsSum);
 
   return {
     scoredMonths,
     monthly,
-    rows: assignSharedRanks(unranked, (a, b) => a.rankSum === b.rankSum),
+    rows: assignSharedRanks(
+      unranked,
+      // 총점 합계는 동점 균등 배분 때문에 1/3 같은 값이 섞여 부동소수 오차가 생긴다.
+      // 순위를 가르는 기준이므로 오차 범위 안이면 같은 값으로 본다.
+      (a, b) => a.rankSum === b.rankSum && Math.abs(a.pointsSum - b.pointsSum) < 1e-9,
+    ),
   };
 }
 
