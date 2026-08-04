@@ -84,6 +84,54 @@ describe('App', () => {
     expect(screen.getByText(/참가자 3명/)).toBeTruthy();
   });
 
+  it('한글 조합을 확정하는 Enter는 참가자를 등록하지 않는다', async () => {
+    render(<App />);
+    await waitFor(() => screen.getByText(/참가자가 없습니다/));
+    goTo('리그 설정');
+
+    const input = screen.getByPlaceholderText('참가자 이름');
+    fireEvent.change(input, { target: { value: '홍길동' } });
+
+    // '동'을 확정하는 Enter — 조합 중이므로 제출이 아니다
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true, keyCode: 229 });
+    expect(screen.queryByText('홍길동')).toBeNull();
+    expect((input as HTMLInputElement).value).toBe('홍길동');
+
+    // 조합이 끝난 뒤의 Enter만 등록한다
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => {
+      expect(screen.getByText('홍길동')).toBeTruthy();
+    });
+
+    // '홍길동' 하나만 등록되고 마지막 글자 '동'이 따로 생기지 않아야 한다
+    expect(screen.queryByText('동')).toBeNull();
+    expect(screen.getByText(/참가자 1명/)).toBeTruthy();
+    expect(document.querySelectorAll('.manager-list li')).toHaveLength(1);
+    expect((input as HTMLInputElement).value).toBe('');
+  });
+
+  it('이름 수정에서도 조합 중 Enter를 무시한다', async () => {
+    render(<App />);
+    await waitFor(() => screen.getByText(/참가자가 없습니다/));
+    await addManagers(['홍길동']);
+
+    fireEvent.click(screen.getByRole('button', { name: '이름 수정' }));
+    const input = screen.getByDisplayValue('홍길동');
+    fireEvent.change(input, { target: { value: '이몽룡' } });
+
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true, keyCode: 229 });
+    // 아직 편집 중이어야 한다
+    expect(screen.getByRole('button', { name: '저장' })).toBeTruthy();
+
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => {
+      expect(screen.getByText('이몽룡')).toBeTruthy();
+    });
+    expect(screen.queryByRole('button', { name: '저장' })).toBeNull();
+    expect(screen.getByText(/참가자 1명/)).toBeTruthy();
+    expect(document.querySelectorAll('.manager-list li')).toHaveLength(1);
+  });
+
   it('아직 안 넣은 항목을 달별로 알려준다', async () => {
     render(<App />);
     await waitFor(() => screen.getByText(/참가자가 없습니다/));

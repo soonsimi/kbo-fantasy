@@ -141,7 +141,7 @@ BB·SO·GDP가 기본기록2에 나뉘어 있다. 그래서 임포트는 **표�
 ```bash
 pnpm install
 pnpm dev          # 개발 서버
-pnpm test         # 테스트 (93개)
+pnpm test         # 테스트 (95개)
 pnpm build        # 타입체크 + 프로덕션 빌드
 pnpm lint
 ```

@@ -3,6 +3,7 @@ import { scoredMonthKeys } from '../domain/season';
 import { DEFAULT_CATEGORIES } from '../domain/categories';
 import { monthLabel } from '../domain/types';
 import type { LeagueSnapshot, ManagerId } from '../domain/types';
+import { isComposing } from './composition';
 
 interface Props {
   snapshot: LeagueSnapshot;
@@ -82,6 +83,8 @@ export function LeagueSetupPanel({ snapshot, update }: Props) {
             placeholder="참가자 이름"
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => {
+              // 한글 조합을 확정하는 Enter는 제출이 아니다
+              if (isComposing(e)) return;
               if (e.key === 'Enter') addManager();
             }}
           />
@@ -101,6 +104,7 @@ export function LeagueSetupPanel({ snapshot, update }: Props) {
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
                       onKeyDown={(e) => {
+                        if (isComposing(e)) return;
                         if (e.key === 'Enter') saveName(manager.id);
                         if (e.key === 'Escape') setEditing(null);
                       }}
